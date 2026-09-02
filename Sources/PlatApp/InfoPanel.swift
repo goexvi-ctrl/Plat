@@ -48,13 +48,13 @@ struct InfoPanel: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 10) {
                 Image(systemName: entry.isDirectory ? "folder.fill" : "doc.fill")
-                    .font(.system(size: 26))
+                    .font(.system(size: 18))
                     .foregroundStyle(entry.isDirectory ? Color.accentColor : .secondary)
 
                 // Click the name to copy it, as requested.
                 CopyButton(text: name, copied: $copied, label: "name") {
                     Text(name)
-                        .font(.system(size: 22, weight: .semibold))
+                        .font(.system(size: 16, weight: .semibold))
                         .textSelection(.enabled)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
