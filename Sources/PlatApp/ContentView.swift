@@ -41,11 +41,16 @@ struct ContentView: View {
             }
 
         case .scanning(let stats):
+            // Report both sizes while scanning.  Showing only the logical total
+            // would name a figure the map never uses, since on-disk is the
+            // default; and the gap between the two is itself informative.
+            let onDisk = model.splitHardLinks ? stats.sharedBytes : stats.allocatedBytes
             placeholder(icon: "magnifyingglass",
                         title: "Scanning\u{2026}",
                         detail: "\(ByteFormat.count(stats.files)) files in "
-                              + "\(ByteFormat.count(stats.directories)) folders \u{2014} "
-                              + ByteFormat.string(stats.totalBytes)) {
+                              + "\(ByteFormat.count(stats.directories)) folders\n"
+                              + "\(ByteFormat.string(onDisk)) on disk \u{2022} "
+                              + "\(ByteFormat.string(stats.totalBytes)) logical") {
                 VStack(spacing: 12) {
                     ProgressView().controlSize(.small)
                     Button("Cancel") { model.cancel() }

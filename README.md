@@ -25,7 +25,8 @@ path:
     Plat ~/Documents
 
 Scanning is fast -- a home folder of a million-odd files takes a few seconds --
-and a progress count runs while it works.  **Cancel** stops it.
+and a running count of files, folders and both size totals shows while it
+works.  **Cancel** stops it.
 
 If the status bar reports files it could not read, macOS is withholding
 folders such as Desktop, Documents and Downloads.  Grant Plat **Full Disk
