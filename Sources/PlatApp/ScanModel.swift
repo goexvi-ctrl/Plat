@@ -127,6 +127,12 @@ final class ScanModel {
 
     var breadcrumb: [Int] { tree.isEmpty ? [] : tree.ancestry(of: focus) }
 
+    /// "claude/src/Plat" -- the scanned folder plus where you are inside it.
+    var focusPath: String {
+        guard isReady, !tree.isEmpty else { return scannedPath ?? "Plat" }
+        return tree.displayPath(of: focus)
+    }
+
     // MARK: Scanning
 
     func chooseFolder() {

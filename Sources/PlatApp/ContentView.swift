@@ -26,7 +26,7 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .goToFolderRequested)) { _ in
             if model.isReady { goToFolder = true }
         }
-        .navigationTitle(model.scannedPath.map { ($0 as NSString).lastPathComponent } ?? "Plat")
+        .navigationTitle(model.focusPath)
     }
 
     // MARK: Main area
@@ -137,12 +137,17 @@ struct ContentView: View {
                 if model.phase == .ready {
                     ForEach(Array(model.breadcrumb.enumerated()), id: \.offset) { index, node in
                         if index > 0 {
-                            Image(systemName: "chevron.right")
-                                .font(.caption2).foregroundStyle(.tertiary)
+                            Text("/").foregroundStyle(.tertiary)
                         }
-                        Button(model.tree.name(of: node)) { model.focus(on: node) }
-                            .buttonStyle(.link)
-                            .disabled(node == model.focus)
+                        if node == model.focus {
+                            // Where you already are: plain, not a dead link.
+                            Text(model.tree.name(of: node))
+                                .fontWeight(.medium)
+                        } else {
+                            Button(model.tree.name(of: node)) { model.focus(on: node) }
+                                .buttonStyle(.link)
+                                .help("Go to \(model.tree.displayPath(of: node))")
+                        }
                     }
                     Spacer(minLength: 12)
                     Text(ByteFormat.string(model.tree.size(of: model.focus)))

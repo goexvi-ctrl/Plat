@@ -47,8 +47,10 @@ folder's name and size along the top.
 | **Shift-Cmd-G** | Jump to a folder by name |
 | **Cmd-R** | Scan the same folder again |
 
-The breadcrumb along the top shows where you are; click any part of it to go
-back to that level.
+The bar along the top, and the window title, read as a path from the folder you
+scanned down to where you are now -- `claude/src/Plat` rather than just
+`claude`, so the outermost folder is always named.  Click any element of that
+path to jump to it.
 
 **Plat > About Plat** reports the version, the commit it was built from, and
 -- if it was built from a tree with uncommitted edits -- says so, in orange,

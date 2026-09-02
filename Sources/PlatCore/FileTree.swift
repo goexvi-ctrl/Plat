@@ -185,6 +185,16 @@ public struct FileTree: Sendable {
         return chain.reversed()
     }
 
+    /// The chain of names from the scanned folder down to `index`, joined for
+    /// display: "claude/src/Plat".
+    ///
+    /// Unlike `path(of:)` this is rooted at the folder that was scanned rather
+    /// than at "/", so the title bar always says which tree you are looking at
+    /// as well as where you are inside it.
+    public func displayPath(of index: Int) -> String {
+        ancestry(of: index).map { name(of: $0) }.joined(separator: "/")
+    }
+
     /// Count everything beneath a node.
     ///
     /// Children are contiguous but a whole *subtree* is not (nodes are laid out

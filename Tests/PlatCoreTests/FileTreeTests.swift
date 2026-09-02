@@ -61,6 +61,27 @@ final class FileTreeTests: XCTestCase {
         XCTAssertEqual(t.path(of: 4), "/tmp/root/a/a2")
     }
 
+    /// The title bar and breadcrumb are rooted at the folder that was scanned,
+    /// not at "/", so they always name the tree as well as the position in it.
+    func testDisplayPath() {
+        let t = sampleTree()
+        XCTAssertEqual(t.displayPath(of: 0), "root")
+        XCTAssertEqual(t.displayPath(of: 1), "root/a")
+        XCTAssertEqual(t.displayPath(of: 4), "root/a/a2")
+        // The absolute path is a different thing and still available.
+        XCTAssertEqual(t.path(of: 4), "/tmp/root/a/a2")
+    }
+
+    func testDisplayPathSegmentsMatchTheBreadcrumb() {
+        let t = sampleTree()
+        for node in [0, 1, 2, 3, 4] {
+            let segments = t.displayPath(of: node).split(separator: "/").map(String.init)
+            let crumbs = t.ancestry(of: node).map { t.name(of: $0) }
+            XCTAssertEqual(segments, crumbs,
+                           "every element of the displayed path must be a clickable ancestor")
+        }
+    }
+
     func testDepthAndAncestry() {
         let t = sampleTree()
         XCTAssertEqual(t.depth(of: 0), 0)
