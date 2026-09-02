@@ -9,7 +9,6 @@ struct ContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            pathBar
             content
             Divider()
             statusBar
@@ -25,7 +24,7 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .goToFolderRequested)) { _ in
             if model.isReady { goToFolder = true }
         }
-        .navigationTitle(model.focusPath)
+        .navigationTitle(model.focusName)
     }
 
     // MARK: Main area
@@ -107,6 +106,54 @@ struct ContentView: View {
                 })
     }
 
+    /// The clickable path, shown in the toolbar in place of a plain title.
+    /// A path deeper than five levels collapses its leading elements into a
+    /// menu, so the folder you are actually in never gets truncated away.
+    @ViewBuilder
+    private var pathWidget: some View {
+        if model.phase == .ready {
+            let crumbs = model.breadcrumb
+            let tail = 4
+            HStack(spacing: 3) {
+                if crumbs.count > tail + 1 {
+                    Menu {
+                        ForEach(crumbs.dropLast(tail), id: \.self) { node in
+                            Button(model.tree.displayPath(of: node)) { model.focus(on: node) }
+                        }
+                    } label: {
+                        Text("\u{2026}")
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    .help("Earlier folders in the path")
+                    Text("/").foregroundStyle(.tertiary)
+                    crumbRow(Array(crumbs.suffix(tail)))
+                } else {
+                    crumbRow(crumbs)
+                }
+                Text(ByteFormat.string(model.tree.size(of: model.focus)))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                    .padding(.leading, 6)
+            }
+            .lineLimit(1)
+            .fixedSize()
+        }
+    }
+
+    private func crumbRow(_ nodes: [Int]) -> some View {
+        HStack(spacing: 3) {
+            ForEach(Array(nodes.enumerated()), id: \.element) { index, node in
+                if index > 0 { Text("/").foregroundStyle(.tertiary) }
+                PathCrumb(name: model.tree.name(of: node),
+                          destination: model.tree.displayPath(of: node),
+                          isCurrent: node == model.focus) {
+                    model.focus(on: node)
+                }
+            }
+        }
+    }
+
     private func zoom(to node: Int) {
         inspection = nil
         model.focus(on: node)
@@ -129,62 +176,6 @@ struct ContentView: View {
     }
 
     // MARK: Chrome
-
-    /// The clickable path.  No ScrollView and no fixed height: a horizontal
-    /// scroll view inside a height-constrained row laid its content out to
-    /// nothing, which is what left this bar blank.  A deep path collapses its
-    /// leading elements into a menu instead of scrolling.
-    @ViewBuilder
-    private var pathBar: some View {
-        if model.phase == .ready {
-            let crumbs = model.breadcrumb
-            let tail = 4
-            HStack(spacing: 4) {
-                if crumbs.count > tail + 1 {
-                    Menu {
-                        ForEach(crumbs.dropLast(tail), id: \.self) { node in
-                            Button(model.tree.displayPath(of: node)) { model.focus(on: node) }
-                        }
-                    } label: {
-                        Text("\u{2026}")
-                    }
-                    .menuStyle(.borderlessButton)
-                    .fixedSize()
-                    .help("Earlier folders in the path")
-                    Text("/").foregroundStyle(.tertiary)
-                    crumbRow(Array(crumbs.suffix(tail)))
-                } else {
-                    crumbRow(crumbs)
-                }
-
-                Spacer(minLength: 8)
-
-                Text(ByteFormat.string(model.tree.size(of: model.focus)))
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-                Text(model.metric.shortName)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-            }
-            .lineLimit(1)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 4)
-            Divider()
-        }
-    }
-
-    private func crumbRow(_ nodes: [Int]) -> some View {
-        HStack(spacing: 4) {
-            ForEach(Array(nodes.enumerated()), id: \.element) { index, node in
-                if index > 0 { Text("/").foregroundStyle(.tertiary) }
-                PathCrumb(name: model.tree.name(of: node),
-                          destination: model.tree.displayPath(of: node),
-                          isCurrent: node == model.focus) {
-                    model.focus(on: node)
-                }
-            }
-        }
-    }
 
     private var statusBar: some View {
         HStack(spacing: 8) {
@@ -235,6 +226,12 @@ struct ContentView: View {
 
     @ToolbarContentBuilder
     private var toolbarItems: some ToolbarContent {
+        // The path lives in the toolbar rather than in a bar of its own: a
+        // window title cannot be clicked, and a separate strip costs a row of
+        // vertical space for something the title bar already has room for.
+        ToolbarItem(placement: .navigation) {
+            pathWidget
+        }
         ToolbarItemGroup {
             Button { model.goUp() } label: { Image(systemName: "arrow.up.left") }
                 .help("Go up one level")
