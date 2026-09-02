@@ -1,8 +1,43 @@
+import AppKit
 import PlatCore
 import SwiftUI
 
 extension Notification.Name {
     static let goToFolderRequested = Notification.Name("GoToFolderRequested")
+}
+
+@MainActor
+private func showAboutPanel() {
+    let build = BuildInfo.current
+    let body = NSMutableParagraphStyle()
+    body.alignment = .center
+
+    let credits = NSMutableAttributedString()
+    func line(_ text: String, size: CGFloat, colour: NSColor) {
+        credits.append(NSAttributedString(string: text + "\n", attributes: [
+            .font: NSFont.systemFont(ofSize: size),
+            .foregroundColor: colour,
+            .paragraphStyle: body,
+        ]))
+    }
+    line("A disk-usage treemap.", size: 11, colour: .labelColor)
+    if !build.commitHash.isEmpty {
+        line("Commit \(build.commitHash), \(build.commitDate)", size: 10, colour: .secondaryLabelColor)
+    }
+    if build.isModified {
+        // Say so plainly: a build from a dirty tree does not correspond to any
+        // commit, so the hash alone would be misleading.
+        let when = build.buildTime.isEmpty ? "" : " at \(build.buildTime)"
+        line("Built from a modified tree\(when)", size: 10, colour: .systemOrange)
+    }
+
+    NSApplication.shared.orderFrontStandardAboutPanel(options: [
+        .applicationName: "Plat",
+        .applicationVersion: build.version,
+        .version: build.buildDetail,
+        .credits: credits,
+    ])
+    NSApplication.shared.activate(ignoringOtherApps: true)
 }
 
 @main
@@ -15,6 +50,11 @@ struct PlatApp: App {
         }
         .defaultSize(width: 1100, height: 720)
         .commands {
+            // Replace the stock About item so the panel can show which commit
+            // this build came from, and whether the tree was clean.
+            CommandGroup(replacing: .appInfo) {
+                Button("About Plat") { showAboutPanel() }
+            }
             CommandGroup(replacing: .newItem) {
                 Button("Open Folder\u{2026}") { model.chooseFolder() }
                     .keyboardShortcut("o")

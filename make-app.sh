@@ -8,7 +8,10 @@ set -e
 DIR=$(cd "$(dirname "$0")" && pwd)
 CONFIG=${CONFIG:-release}
 APP="$DIR/build/Plat.app"
-VERSION=$(cat "$DIR/Version")
+# Release version from the Version file, plus git commit / dirty state, so a
+# build can always say exactly where it came from.
+eval "$("$DIR/scripts/version-info.sh")"
+VERSION="$PLAT_VERSION"
 # "-" is an ad-hoc signature: fine locally, but a downloaded copy stays
 # quarantined.  `make release` passes a Developer ID instead.
 CODESIGN_IDENTITY=${CODESIGN_IDENTITY:--}
@@ -61,6 +64,11 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 	<key>LSApplicationCategoryType</key> <string>public.app-category.utilities</string>
 	<key>CFBundleShortVersionString</key><string>$VERSION</string>
 	<key>CFBundleVersion</key>           <string>$VERSION</string>
+	<!-- Build provenance, shown in the About box. -->
+	<key>PlatCommitHash</key>            <string>$PLAT_COMMIT_HASH</string>
+	<key>PlatCommitDate</key>            <string>$PLAT_COMMIT_DATE</string>
+	<key>PlatTreeState</key>             <string>$PLAT_TREE_STATE</string>
+	<key>PlatBuildTime</key>             <string>$PLAT_BUILD_TIME</string>
 	<key>LSMinimumSystemVersion</key>    <string>14.0</string>
 	<key>NSHighResolutionCapable</key>   <true/>
 	<key>NSDesktopFolderUsageDescription</key>

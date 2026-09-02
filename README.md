@@ -50,6 +50,11 @@ folder's name and size along the top.
 The breadcrumb along the top shows where you are; click any part of it to go
 back to that level.
 
+**Plat > About Plat** reports the version, the commit it was built from, and
+-- if it was built from a tree with uncommitted edits -- says so, in orange,
+with the time it was built.  A build from a modified tree corresponds to no
+commit, so the hash alone would be misleading.
+
 The details panel is set large enough to read at a glance.  It gives the size
 both readably and in exact bytes, the kind of file, how many items a folder
 holds directly and in total, and what share of its parent and of the whole scan
@@ -158,9 +163,16 @@ Hidden files and folders *are* included, at every level: `.git`, `.build`,
 Needs a Swift 6 toolchain; built and tested with Xcode 26.
 
     make            # build build/Plat.app
-    make test       # 60 tests
+    make test       # 66 tests
     make install    # also install into ~/Applications
     make release    # build build/Plat-<version>-macos-<arch>.dmg
+
+The `Version` file gives the release version; the commit hash, its date, and
+whether the tree was dirty are read from git at build time by
+`scripts/version-info.sh` and stamped into the app's `Info.plist`, where the
+About box reads them.  Only tracked edits count as dirty, so stray untracked
+files do not mark a build modified.  Nothing is generated into a source file,
+so building never leaves a modified file behind in git.
 
 `make install` takes `DESTDIR=/Applications` to install for all users.  The
 build also makes the icon: `icons/AppIcon.png` is the 1024x1024 master,
@@ -184,7 +196,7 @@ entitlements, so there is no nested code to sign and nothing to grant.
     Sources/PlatCore/    scanner, tree, treemap, renderer -- no AppKit
     Sources/PlatApp/     SwiftUI window, NSView host, model
     Sources/PlatBench/   benchmark and offscreen PNG renderer
-    Tests/PlatCoreTests/ 60 tests
+    Tests/PlatCoreTests/ 66 tests
 
 `plat-bench` scans a tree and reports timings, and can render a treemap
 straight to a PNG without opening a window:
