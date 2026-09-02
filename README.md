@@ -173,6 +173,8 @@ Needs a Swift 6 toolchain; built and tested with Xcode 26.
     make test       # 66 tests
     make install    # also install into ~/Applications
     make release    # build build/Plat-<version>-macos-<arch>.dmg
+    make tag        # annotated tag v<version> for the current commit
+    make push-tag   # push that tag to origin
 
 The `Version` file gives the release version; the commit hash, its date, and
 whether the tree was dirty are read from git at build time by
@@ -195,6 +197,12 @@ runtime and a secure timestamp, and the image is notarized and stapled:
     make release \
       CODESIGN_IDENTITY="Developer ID Application: Name (TEAMID)" \
       NOTARY_PROFILE=plat-notary
+
+Cutting a release: bump `Version`, commit, `make release` with a Developer ID,
+then `make tag` and `make push-tag`.  `make tag` refuses a dirty tree, because a
+build from uncommitted edits stamps itself "modified" and names a commit that
+does not describe it -- and refuses a version already tagged, so the `Version`
+file has to be bumped first.
 
 `NOTARY_PROFILE` names a profile stored with `xcrun notarytool
 store-credentials`.  Plat links only system frameworks and needs no
