@@ -1,0 +1,14 @@
+# Build output
+/build/
+/.build/
+
+# Release artifacts: built dmgs live on the GitHub releases page, not in git.
+/Releases/
+
+# Editor/OS cruft
+*.swp
+.DS_Store
+
+# Xcode / SwiftPM local state
+/.swiftpm/
+xcuserdata/
