@@ -127,18 +127,10 @@ final class ScanModel {
 
     var breadcrumb: [Int] { tree.isEmpty ? [] : tree.ancestry(of: focus) }
 
-    /// Just the folder you are in, for the window title.  The full path is the
-    /// toolbar widget's job.
-    var focusName: String {
-        guard isReady, !tree.isEmpty else { return "Plat" }
-        return tree.name(of: focus)
-    }
-
-    /// "claude/src/Plat" -- the scanned folder plus where you are inside it.
-    var focusPath: String {
-        guard isReady, !tree.isEmpty else { return scannedPath ?? "Plat" }
-        return tree.displayPath(of: focus)
-    }
+    /// The window title.  Empty once a scan is showing: the toolbar's path
+    /// widget already names the folder, and repeating it in the title bar just
+    /// prints the same word twice.
+    var windowTitle: String { isReady ? "" : "Plat" }
 
     // MARK: Scanning
 

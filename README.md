@@ -52,7 +52,8 @@ now -- `claude/src/Plat` rather than just `claude`, so the outermost folder is
 always named.  **Click any element of it to jump there.**  It sits in the
 toolbar rather than in a bar of its own because a window title cannot be
 clicked, and a separate strip would cost a row of screen space for something
-the title bar already has room for.  A path deeper than five levels folds its
+the title bar already has room for.  The window title itself is left empty
+while a scan is showing, since the path already names the folder.  A path deeper than five levels folds its
 leading elements into a menu.
 
 **Plat > About Plat** reports the version, the commit it was built from, and

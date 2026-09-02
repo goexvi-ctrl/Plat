@@ -24,7 +24,7 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .goToFolderRequested)) { _ in
             if model.isReady { goToFolder = true }
         }
-        .navigationTitle(model.focusName)
+        .navigationTitle(model.windowTitle)
     }
 
     // MARK: Main area
