@@ -1,3 +1,5 @@
+<img src="icons/AppIcon.png" alt="Plat Icon" width="128">
+
 # Plat
 
 A disk-usage treemap for macOS: scan a folder and every file becomes a rectangle
