@@ -9,8 +9,7 @@ struct ContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            breadcrumb
-            Divider()
+            pathBar
             content
             Divider()
             statusBar
@@ -131,39 +130,60 @@ struct ContentView: View {
 
     // MARK: Chrome
 
-    private var breadcrumb: some View {
-        HStack(spacing: 8) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 4) {
-                    if model.phase == .ready {
-                        ForEach(Array(model.breadcrumb.enumerated()), id: \.offset) { index, node in
-                            if index > 0 {
-                                Text("/").foregroundStyle(.tertiary)
-                            }
-                            PathCrumb(name: model.tree.name(of: node),
-                                      destination: model.tree.displayPath(of: node),
-                                      isCurrent: node == model.focus) {
-                                model.focus(on: node)
-                            }
+    /// The clickable path.  No ScrollView and no fixed height: a horizontal
+    /// scroll view inside a height-constrained row laid its content out to
+    /// nothing, which is what left this bar blank.  A deep path collapses its
+    /// leading elements into a menu instead of scrolling.
+    @ViewBuilder
+    private var pathBar: some View {
+        if model.phase == .ready {
+            let crumbs = model.breadcrumb
+            let tail = 4
+            HStack(spacing: 4) {
+                if crumbs.count > tail + 1 {
+                    Menu {
+                        ForEach(crumbs.dropLast(tail), id: \.self) { node in
+                            Button(model.tree.displayPath(of: node)) { model.focus(on: node) }
                         }
-                    } else {
-                        Text(model.scannedPath ?? "Plat").foregroundStyle(.secondary)
+                    } label: {
+                        Text("\u{2026}")
                     }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    .help("Earlier folders in the path")
+                    Text("/").foregroundStyle(.tertiary)
+                    crumbRow(Array(crumbs.suffix(tail)))
+                } else {
+                    crumbRow(crumbs)
                 }
-                .padding(.leading, 12)
-            }
-            if model.phase == .ready {
+
                 Spacer(minLength: 8)
+
                 Text(ByteFormat.string(model.tree.size(of: model.focus)))
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
                 Text(model.metric.shortName)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
-                    .padding(.trailing, 12)
+            }
+            .lineLimit(1)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 4)
+            Divider()
+        }
+    }
+
+    private func crumbRow(_ nodes: [Int]) -> some View {
+        HStack(spacing: 4) {
+            ForEach(Array(nodes.enumerated()), id: \.element) { index, node in
+                if index > 0 { Text("/").foregroundStyle(.tertiary) }
+                PathCrumb(name: model.tree.name(of: node),
+                          destination: model.tree.displayPath(of: node),
+                          isCurrent: node == model.focus) {
+                    model.focus(on: node)
+                }
             }
         }
-        .frame(height: 30)
     }
 
     private var statusBar: some View {
