@@ -19,6 +19,8 @@ set -eu
 : "${APP:?set APP}" "${DMG:?set DMG}" "${VOLNAME:?set VOLNAME}" "${IDENTITY:?set IDENTITY}"
 NOTARY_PROFILE="${NOTARY_PROFILE:-plat-notary}"
 BUILD_DIR="$(dirname "$DMG")"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+DMG_ASSETS="$SCRIPT_DIR/dmg"
 
 # Hardened runtime and a secure timestamp need a real certificate; an ad-hoc
 # signature supports neither, so only request them for a Developer ID build.
@@ -61,17 +63,35 @@ MSG
 fi
 codesign --verify --strict --verbose=1 "$APP"
 
-# 2. Stage the image: the app, plus an /Applications symlink to drag it onto.
-STAGE="$BUILD_DIR/dmg-stage"
-rm -rf "$STAGE"
-mkdir -p "$STAGE"
-ditto "$APP" "$STAGE/$(basename "$APP")"
-ln -s /Applications "$STAGE/Applications"
+# 2. Build a styled disk image with dmgbuild: the app, an Applications symlink
+#    to drag it onto, and a background with an arrow from one to the other, so
+#    no README is needed. dmgbuild writes the .DS_Store directly, so no Finder
+#    or GUI session is involved.
+#
+#    dmgbuild is a Python tool; use it from PATH if present, otherwise
+#    provision it into a local venv (python3 ships with the command line tools
+#    that a Swift build already needs).
+DMGBUILD="$(command -v dmgbuild || true)"
+if [ -z "$DMGBUILD" ]; then
+	VENV="$BUILD_DIR/dmgbuild-venv"
+	if [ ! -x "$VENV/bin/dmgbuild" ]; then
+		echo "macos-release: provisioning dmgbuild into $VENV"
+		python3 -m venv "$VENV"
+		"$VENV/bin/pip" install --quiet --upgrade pip
+		"$VENV/bin/pip" install --quiet dmgbuild
+	fi
+	DMGBUILD="$VENV/bin/dmgbuild"
+fi
+
+# Combine the 1x and 2x backgrounds into one Retina-aware TIFF.
+BG_TIFF="$BUILD_DIR/dmg-background.tiff"
+tiffutil -cathidpicheck \
+	"$DMG_ASSETS/dmg-background.png" "$DMG_ASSETS/dmg-background@2x.png" \
+	-out "$BG_TIFF" >/dev/null
 
 rm -f "$DMG"
-hdiutil create -quiet -volname "$VOLNAME" -srcfolder "$STAGE" \
-	-ov -format UDZO "$DMG"
-rm -rf "$STAGE"
+APP="$APP" BG="$BG_TIFF" "$DMGBUILD" -s "$DMG_ASSETS/settings.py" "$VOLNAME" "$DMG"
+rm -f "$BG_TIFF"
 
 # 3. Sign the disk image itself.
 codesign --force $timestamp --sign "$IDENTITY" "$DMG"
