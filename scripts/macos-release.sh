@@ -34,7 +34,31 @@ fi
 # 1. Sign the bundle. --force replaces the ad-hoc signature swiftc and
 #    make-app.sh leave behind. Plat links only system frameworks, so there is
 #    no nested code to sign first and no entitlements to grant.
-codesign --force $runtime $timestamp --sign "$IDENTITY" "$APP"
+"$(dirname "$0")/check-identity.sh" "$IDENTITY"
+if ! codesign --force $runtime $timestamp --sign "$IDENTITY" "$APP"; then
+	cat >&2 <<'MSG'
+
+codesign failed.  If the error was errSecInternalComponent, codesign found the
+certificate but could not reach its private key.  That is an environment
+problem, not a problem with the app.  The usual causes:
+
+  * The shell has no access to the login keychain.  Run this from a Terminal
+    in your own GUI login session -- not over ssh, and not from a tmux or
+    screen session that was started before you logged in.
+  * The keychain is locked:
+        security unlock-keychain ~/Library/Keychains/login.keychain-db
+  * You ran make under sudo, so codesign is looking at root's keychain
+    rather than yours.  Do not use sudo; use DESTDIR if you need to install
+    somewhere privileged.
+  * The private key's access control does not permit codesign.  In Keychain
+    Access, find the "Developer ID Application" key, Get Info > Access
+    Control, and allow codesign to use it.
+
+Check what is visible to this shell with:
+        security find-identity -v -p codesigning
+MSG
+	exit 1
+fi
 codesign --verify --strict --verbose=1 "$APP"
 
 # 2. Stage the image: the app, plus an /Applications symlink to drag it onto.

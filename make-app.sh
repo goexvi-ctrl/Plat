@@ -20,6 +20,8 @@ if [ "$CODESIGN_IDENTITY" = "-" ]; then
 else
 	SIGN_OPTS="--options runtime --timestamp"
 fi
+# Fail early and legibly if the identity is not usable from this shell.
+"$DIR/scripts/check-identity.sh" "$CODESIGN_IDENTITY"
 
 swift build --package-path "$DIR" -c "$CONFIG"
 BIN=$(swift build --package-path "$DIR" -c "$CONFIG" --show-bin-path)
@@ -84,7 +86,30 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 PLIST
 
 printf 'APPL????' > "$APP/Contents/PkgInfo"
-codesign --force $SIGN_OPTS --sign "$CODESIGN_IDENTITY" "$APP"
+if ! codesign --force $SIGN_OPTS --sign "$CODESIGN_IDENTITY" "$APP"; then
+	cat >&2 <<'MSG'
+
+codesign failed.  If the error was errSecInternalComponent, codesign found the
+certificate but could not reach its private key.  That is an environment
+problem, not a problem with the app.  The usual causes:
+
+  * The shell has no access to the login keychain.  Run this from a Terminal
+    in your own GUI login session -- not over ssh, and not from a tmux or
+    screen session that was started before you logged in.
+  * The keychain is locked:
+        security unlock-keychain ~/Library/Keychains/login.keychain-db
+  * You ran make under sudo, so codesign is looking at root's keychain
+    rather than yours.  Do not use sudo; use DESTDIR if you need to install
+    somewhere privileged.
+  * The private key's access control does not permit codesign.  In Keychain
+    Access, find the "Developer ID Application" key, Get Info > Access
+    Control, and allow codesign to use it.
+
+Check what is visible to this shell with:
+        security find-identity -v -p codesigning
+MSG
+	exit 1
+fi
 codesign --verify --strict "$APP"
 echo "Built $APP ($VERSION, signed by ${CODESIGN_IDENTITY})"
 
