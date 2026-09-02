@@ -132,38 +132,38 @@ struct ContentView: View {
     // MARK: Chrome
 
     private var breadcrumb: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 4) {
-                if model.phase == .ready {
-                    ForEach(Array(model.breadcrumb.enumerated()), id: \.offset) { index, node in
-                        if index > 0 {
-                            Text("/").foregroundStyle(.tertiary)
+        HStack(spacing: 8) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 4) {
+                    if model.phase == .ready {
+                        ForEach(Array(model.breadcrumb.enumerated()), id: \.offset) { index, node in
+                            if index > 0 {
+                                Text("/").foregroundStyle(.tertiary)
+                            }
+                            PathCrumb(name: model.tree.name(of: node),
+                                      destination: model.tree.displayPath(of: node),
+                                      isCurrent: node == model.focus) {
+                                model.focus(on: node)
+                            }
                         }
-                        if node == model.focus {
-                            // Where you already are: plain, not a dead link.
-                            Text(model.tree.name(of: node))
-                                .fontWeight(.medium)
-                        } else {
-                            Button(model.tree.name(of: node)) { model.focus(on: node) }
-                                .buttonStyle(.link)
-                                .help("Go to \(model.tree.displayPath(of: node))")
-                        }
+                    } else {
+                        Text(model.scannedPath ?? "Plat").foregroundStyle(.secondary)
                     }
-                    Spacer(minLength: 12)
-                    Text(ByteFormat.string(model.tree.size(of: model.focus)))
-                        .monospacedDigit()
-                        .foregroundStyle(.secondary)
-                    Text(model.metric.shortName)
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                } else {
-                    Text(model.scannedPath ?? "Plat").foregroundStyle(.secondary)
                 }
+                .padding(.leading, 12)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
+            if model.phase == .ready {
+                Spacer(minLength: 8)
+                Text(ByteFormat.string(model.tree.size(of: model.focus)))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                Text(model.metric.shortName)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .padding(.trailing, 12)
+            }
         }
-        .frame(height: 28)
+        .frame(height: 30)
     }
 
     private var statusBar: some View {
@@ -261,6 +261,48 @@ struct ContentView: View {
 
             Toggle(isOn: $model.showLabels) { Image(systemName: "textformat") }
                 .help("Show names inside boxes")
+        }
+    }
+}
+
+/// One element of the path bar.
+///
+/// Deliberately not `.buttonStyle(.link)`: a link-styled button takes clicks
+/// only on the glyphs themselves, which for a short folder name is a target a
+/// few points wide and easy to miss entirely.  A plain button with an explicit
+/// `contentShape` makes the whole padded rectangle clickable, and the hover
+/// highlight makes it obvious which parts of the path are targets.
+private struct PathCrumb: View {
+    let name: String
+    let destination: String
+    let isCurrent: Bool
+    var go: () -> Void
+
+    @State private var hovering = false
+
+    var body: some View {
+        if isCurrent {
+            // Where you already are; nothing to click.
+            Text(name)
+                .fontWeight(.medium)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 2)
+        } else {
+            Button(action: go) {
+                Text(name)
+                    .foregroundStyle(hovering ? AnyShapeStyle(Color.accentColor)
+                                              : AnyShapeStyle(.primary))
+                    .underline(hovering)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 2)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Color.secondary.opacity(hovering ? 0.18 : 0)))
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .onHover { hovering = $0 }
+            .help("Go to \(destination)")
         }
     }
 }
