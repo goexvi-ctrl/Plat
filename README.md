@@ -68,7 +68,12 @@ The details panel is set large enough to read at a glance.  It gives the size
 both readably and in exact bytes, the kind of file, how many items a folder
 holds directly and in total, and what share of its parent and of the whole scan
 it accounts for.  **Click the name or the path in the panel to copy it.**
-There are buttons to zoom in and to reveal the item in the Finder.
+There are buttons to **Quick Look** it, **Open** it in whatever application
+handles it, **Reveal** it in the Finder, and to zoom in.  Quick Look is the
+same system panel the Finder uses -- it is not Finder-only, any app can drive
+it -- so a picture or a movie previews in place without launching anything.  A
+scan is a snapshot, so if the file has been deleted since, the panel says so
+and those buttons are disabled.
 
 ## Reading the map
 
@@ -116,8 +121,14 @@ types conform to more than one supertype:
 Finally, **pinned extensions** override the kind.  Pin `.swift` orange and
 `.m` blue whatever their kinds say; type an extension with or without the
 leading dot, in any case.  This is also the escape hatch when the system's
-guess is wrong for your work -- `.ts` resolves to an MPEG transport stream, not
-TypeScript.  The dialog lists the extensions using the most space in the open
+guess is wrong for your work.
+
+One such case is corrected already: `.ts` resolves to an MPEG-2 transport
+stream and `.mts` to AVCHD video, so a source tree would report hundreds of
+megabytes of "Movie".  The TypeScript family (`.ts`, `.tsx`, `.mts`, `.cts`) is
+classified as Text, which is where compiled-from source belongs.  It follows
+the Text colour, so recolouring Text moves it too -- and pinning `.ts`
+directly still overrides that.  The dialog lists the extensions using the most space in the open
 scan, each in the colour it currently has; clicking one pins it at that colour,
 so nothing moves until you change it.
 

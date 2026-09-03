@@ -56,9 +56,27 @@ public enum FileKind: String, CaseIterable, Codable, Sendable {
     /// extensions, so answers are memoised.
     private static let cache = KindCache()
 
+    /// Extensions where the system's answer is wrong on a developer's machine.
+    ///
+    /// Deliberately tiny.  The point of using Uniform Type Identifiers is not
+    /// to maintain a table, so this holds only cases where the system is
+    /// actively misleading rather than merely unhelpful -- an unrecognised
+    /// extension lands in Other, which is honest, and can be pinned.
+    ///
+    /// TypeScript is the one that bites: `.ts` resolves to an MPEG-2 transport
+    /// stream and `.mts` to AVCHD video, so a source tree reports hundreds of
+    /// megabytes of "Movie".  The whole family is corrected together, since
+    /// fixing `.ts` while `.tsx` stayed elsewhere would be its own confusion.
+    /// TypeScript is compiled rather than run, so it belongs with .swift and
+    /// .c in Text.
+    private static let corrections: [String: FileKind] = [
+        "ts": .text, "tsx": .text, "mts": .text, "cts": .text,
+    ]
+
     public static func of(extension raw: String) -> FileKind {
         let key = AppearanceSettings.normalizeExtension(raw)
         guard !key.isEmpty else { return .other }
+        if let corrected = corrections[key] { return corrected }
         if let hit = cache.get(key) { return hit }
         let kind = classify(key)
         cache.set(key, kind)

@@ -282,3 +282,42 @@ final class FileKindTests: XCTestCase {
         XCTAssertEqual(FileKind.of(extension: "PnG"), .image)
     }
 }
+
+/// A very small set of extensions where the system's answer is actively
+/// misleading on a developer's machine.
+final class KindCorrectionTests: XCTestCase {
+
+    /// `.ts` is an MPEG-2 transport stream to macOS, so a source tree reported
+    /// hundreds of megabytes of "Movie".
+    func testTypeScriptIsTextNotVideo() {
+        for ext in ["ts", "tsx", "mts", "cts"] {
+            XCTAssertEqual(FileKind.of(extension: ext), .text,
+                           ".\(ext) is TypeScript source, not video")
+        }
+    }
+
+    func testCorrectionsRespectDotAndCase() {
+        XCTAssertEqual(FileKind.of(extension: ".TS"), .text)
+        XCTAssertEqual(FileKind.of(extension: "Ts"), .text)
+    }
+
+    /// Correcting TypeScript must not have disturbed real video extensions.
+    func testGenuineVideoIsStillMovie() {
+        for ext in ["mp4", "mov", "m2ts", "avi", "mkv"] {
+            XCTAssertEqual(FileKind.of(extension: ext), .movie,
+                           ".\(ext) should still be a movie")
+        }
+    }
+
+    /// A corrected extension follows its kind's colour, so recolouring Text
+    /// moves .ts with it -- and a pin still overrides.
+    func testCorrectedExtensionFollowsTheKindColour() {
+        var s = AppearanceSettings()
+        XCTAssertEqual(s.effectiveColor(forExtension: "ts").hex,
+                       FileKind.text.defaultColor.hex)
+        s.set(.text, to: ColorRGBA(hex: "123456FF")!)
+        XCTAssertEqual(s.effectiveColor(forExtension: "ts").hex, "123456FF")
+        s.setExtension("ts", to: ColorRGBA(hex: "ABCDEFFF")!)
+        XCTAssertEqual(s.effectiveColor(forExtension: "ts").hex, "ABCDEFFF")
+    }
+}

@@ -171,7 +171,36 @@ struct InfoPanel: View {
     // MARK: Actions
 
     private var actions: some View {
-        HStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Button {
+                    QuickLook.shared.show(path)
+                } label: {
+                    Label("Quick Look", systemImage: "eye")
+                }
+                .help("Preview without opening an application")
+
+                Button {
+                    NSWorkspace.shared.open(URL(fileURLWithPath: path))
+                } label: {
+                    Label("Open", systemImage: "arrow.up.forward.app")
+                }
+                .help(entry.isDirectory
+                      ? "Open this folder in the Finder"
+                      : "Open in the application that handles this file")
+
+                Button {
+                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+                } label: {
+                    Label("Reveal", systemImage: "magnifyingglass")
+                }
+                .help("Show it in the Finder")
+
+                Spacer()
+            }
+            // Only the filesystem actions depend on the file still being there;
+            // zooming works on the scan already in memory.
+            .disabled(!exists)
             if entry.childCount > 0 {
                 Button {
                     onZoom(node)
@@ -179,15 +208,19 @@ struct InfoPanel: View {
                     Label("Zoom In", systemImage: "arrow.down.right.and.arrow.up.left")
                 }
             }
-            Button {
-                NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
-            } label: {
-                Label("Reveal in Finder", systemImage: "magnifyingglass")
+            if !exists {
+                // A scan is a snapshot; by now the file may be gone, and the
+                // buttons above would silently do nothing.
+                Label("No longer on disk", systemImage: "exclamationmark.triangle")
+                    .foregroundStyle(.orange)
+                    .font(.system(size: smallSize))
             }
-            Spacer()
         }
         .font(.system(size: buttonSize))
     }
+
+    private var exists: Bool { QuickLook.canPreview(path) }
+
 }
 
 /// A borderless button that copies `text` and reports what it copied.
