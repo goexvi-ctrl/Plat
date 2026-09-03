@@ -131,7 +131,14 @@ struct ContentView: View {
         let entry = model.tree.nodes[node]
         let path = model.tree.path(of: node)
         if !entry.isSynthetic, !model.tree.isGone(node), QuickLook.canPreview(path) {
-            QuickLook.shared.show(path)
+            // A rescan while the preview is up would leave this index pointing
+            // at some other file, so the delete only stands if the tree has not
+            // been replaced underneath it.
+            let generation = model.scanGeneration
+            QuickLook.shared.show(path) {
+                guard model.scanGeneration == generation else { return }
+                requestDelete(node)
+            }
         } else {
             inspection = Inspection(node: node, point: point,
                                     risk: model.assessment(for: node).risk)

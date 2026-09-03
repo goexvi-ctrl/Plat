@@ -301,6 +301,11 @@ Finder gives, in the same system panel.  A capacity block has no file to
 preview, and neither does a name whose file has since been deleted; those show
 the details popover instead.
 
+**Delete** works while the preview is still up: look at a file, decide it is
+junk, and it goes -- the preview closes and the confirmation takes its place.
+Quick Look hands on the keys it does not use itself, so Plat gets Delete without
+the preview having to be dismissed first.  Space closes the preview, as usual.
+
 The details popover reports what the file actually contains, from `file(1)`:
 
     Kind      PNG image
