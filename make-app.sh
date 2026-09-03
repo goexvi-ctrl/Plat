@@ -55,7 +55,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 	<key>CFBundleDisplayName</key>       <string>Plat</string>
 	<key>CFBundleExecutable</key>        <string>Plat</string>
 	<key>CFBundleIconFile</key>          <string>AppIcon</string>
-	<key>CFBundleIdentifier</key>        <string>org.borman.Plat</string>
+	<key>CFBundleIdentifier</key>        <string>org.plat.app</string>
 	<key>CFBundlePackageType</key>       <string>APPL</string>
 	<key>CFBundleSignature</key>         <string>????</string>
 	<key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
