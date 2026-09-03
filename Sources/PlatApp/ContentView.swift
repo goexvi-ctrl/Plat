@@ -3,6 +3,7 @@ import SwiftUI
 
 struct ContentView: View {
     @Bindable var model: ScanModel
+    @Bindable var prefs: Preferences
     @State private var hover: TreemapBox?
     @State private var inspection: Inspection?
     @State private var goToFolder = false
@@ -68,8 +69,9 @@ struct ContentView: View {
             ZStack(alignment: .topLeading) {
                 TreemapView(tree: model.tree,
                             root: model.focus,
-                            options: model.options,
+                            options: mapOptions,
                             showLabels: model.showLabels,
+                            appearance: prefs.appearance,
                             onOpen: { zoom(to: $0) },
                             onInspect: { node, point in
                                 inspection = Inspection(node: node, point: point)
@@ -88,6 +90,7 @@ struct ContentView: View {
                     .popover(item: $inspection, arrowEdge: .bottom) { target in
                         InfoPanel(tree: model.tree,
                                   node: target.node,
+                                  baseFontSize: prefs.appearance.uiFontSize,
                                   onZoom: { zoom(to: $0) })
                     }
             }
@@ -157,6 +160,14 @@ struct ContentView: View {
                 }
             }
         }
+    }
+
+    /// The label strip has to grow with the map font, or enlarging the font
+    /// just clips the labels it was meant to make readable.
+    private var mapOptions: TreemapOptions {
+        var o = model.options
+        o.labelHeight = model.showLabels ? prefs.appearance.labelHeight : 0
+        return o
     }
 
     private func zoom(to node: Int) {

@@ -86,6 +86,27 @@ There are buttons to zoom in and to reveal the item in the Finder.
 The **Aa** toggle in the toolbar turns the labels off, which gives the boxes
 themselves more room.
 
+## Colours and fonts
+
+**Plat > Settings** (Cmd-,) has two tabs.
+
+*Colors* gives a well for each part of the map -- background, open folder,
+unopened folder, the grouped-small-files block, the hard-link flag, box
+outline, label text and hover highlight -- each labelled with what it actually
+colours, plus the ten-colour palette that file boxes are picked from by
+extension.
+
+A colour you have not set follows the system light or dark appearance, and
+resetting one puts it back under that control rather than freezing it at a
+second hardcoded default.  So you can recolour one thing without the rest
+losing its dark-mode behaviour.
+
+*Fonts* sets the family and size of the labels drawn inside boxes, and the size
+of the details panel.  Raising the map font raises the label strip with it, so
+labels are never clipped -- but a taller strip means fewer boxes are large
+enough to subdivide, so the map gets coarser.  The panel's name and smaller
+text scale from the one figure size.
+
 ## What "size" means
 
 This is the part worth understanding, because the whole point of the program is

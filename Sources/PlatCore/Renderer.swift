@@ -72,10 +72,18 @@ public struct TreemapRenderer {
     /// can possibly fit before doing any real text layout.
     private let averageAdvance: CGFloat
 
-    public init(theme: RenderTheme = .standard, showLabels: Bool = true, fontSize: CGFloat = 10) {
+    public init(theme: RenderTheme = .standard, showLabels: Bool = true,
+                fontName: String = AppearanceSettings.defaultMapFontName,
+                fontSize: CGFloat = CGFloat(AppearanceSettings.defaultMapFontSize)) {
         self.theme = theme
         self.showLabels = showLabels
-        self.font = CTFontCreateWithName("Helvetica" as CFString, fontSize, nil)
+        // Fall back rather than crash if a chosen family has gone away, e.g. a
+        // font that was uninstalled after being saved in preferences.
+        let requested = CTFontCreateWithName(fontName as CFString, fontSize, nil)
+        let resolved = CTFontCopyFamilyName(requested) as String
+        self.font = resolved.isEmpty
+            ? CTFontCreateWithName(AppearanceSettings.defaultMapFontName as CFString, fontSize, nil)
+            : requested
         let probe = "abcdefghijklmnopqrstuvwxyz0123456789"
         let line = CTLineCreateWithAttributedString(
             NSAttributedString(string: probe, attributes: [kCTFontAttributeName as NSAttributedString.Key: font]))

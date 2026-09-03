@@ -43,12 +43,18 @@ private func showAboutPanel() {
 @main
 struct PlatApp: App {
     @State private var model = ScanModel()
+    @State private var prefs = Preferences()
 
     var body: some Scene {
         Window("Plat", id: "main") {
-            ContentView(model: model)
+            ContentView(model: model, prefs: prefs)
         }
         .defaultSize(width: 1100, height: 720)
+
+        // A Settings scene gives the standard Plat > Settings item and Cmd-,.
+        Settings {
+            SettingsView(prefs: prefs)
+        }
         .commands {
             // Replace the stock About item so the panel can show which commit
             // this build came from, and whether the tree was clean.

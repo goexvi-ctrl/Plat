@@ -19,7 +19,15 @@ struct Inspection: Identifiable, Equatable {
 struct InfoPanel: View {
     let tree: FileTree
     let node: Int
+    /// Size of the figures; everything else here is relative to it.
+    var baseFontSize: Double = AppearanceSettings.defaultUIFontSize
     var onZoom: (Int) -> Void
+
+    private var nameSize: CGFloat { CGFloat(baseFontSize + 2) }
+    private var iconSize: CGFloat { CGFloat(baseFontSize + 4) }
+    private var rowSize: CGFloat { CGFloat(baseFontSize) }
+    private var buttonSize: CGFloat { CGFloat(baseFontSize - 1) }
+    private var smallSize: CGFloat { CGFloat(baseFontSize - 3) }
 
     @State private var copied: String?
 
@@ -48,13 +56,13 @@ struct InfoPanel: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 10) {
                 Image(systemName: entry.isDirectory ? "folder.fill" : "doc.fill")
-                    .font(.system(size: 18))
+                    .font(.system(size: iconSize))
                     .foregroundStyle(entry.isDirectory ? Color.accentColor : .secondary)
 
                 // Click the name to copy it, as requested.
                 CopyButton(text: name, copied: $copied, label: "name") {
                     Text(name)
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.system(size: nameSize, weight: .semibold))
                         .textSelection(.enabled)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
@@ -64,7 +72,7 @@ struct InfoPanel: View {
 
             CopyButton(text: path, copied: $copied, label: "path") {
                 Text(path)
-                    .font(.system(size: 11))
+                    .font(.system(size: smallSize))
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
                     .truncationMode(.middle)
@@ -72,7 +80,7 @@ struct InfoPanel: View {
             }
 
             Text(copied.map { "Copied \($0) to the clipboard" } ?? "Click the name or path to copy it")
-                .font(.system(size: 11))
+                .font(.system(size: smallSize))
                 .foregroundStyle(copied == nil ? AnyShapeStyle(.tertiary) : AnyShapeStyle(Color.accentColor))
                 .animation(.easeInOut(duration: 0.15), value: copied)
         }
@@ -129,11 +137,11 @@ struct InfoPanel: View {
     private func row(_ label: String, _ value: String, strong: Bool = false) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
             Text(label)
-                .font(.system(size: 14))
+                .font(.system(size: rowSize))
                 .foregroundStyle(.secondary)
                 .frame(width: 130, alignment: .trailing)
             Text(value)
-                .font(.system(size: 14, weight: strong ? .bold : .medium))
+                .font(.system(size: rowSize, weight: strong ? .bold : .medium))
                 .foregroundStyle(strong ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.primary))
                 .monospacedDigit()
                 .textSelection(.enabled)
@@ -178,7 +186,7 @@ struct InfoPanel: View {
             }
             Spacer()
         }
-        .font(.system(size: 13))
+        .font(.system(size: buttonSize))
     }
 }
 

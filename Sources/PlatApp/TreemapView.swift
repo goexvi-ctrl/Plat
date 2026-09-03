@@ -8,6 +8,10 @@ final class TreemapNSView: NSView {
     var rootNode: Int = 0 { didSet { invalidate() } }
     var options = TreemapOptions() { didSet { invalidate() } }
     var showLabels = true { didSet { needsDisplay = true } }
+    /// Not `appearance`: NSView already has a property by that name.
+    var themeSettings = AppearanceSettings() {
+        didSet { if themeSettings != oldValue { themeDirty = true; needsDisplay = true } }
+    }
 
     var onOpen: ((Int) -> Void)?
     var onInspect: ((Int, CGPoint) -> Void)?
@@ -21,6 +25,7 @@ final class TreemapNSView: NSView {
     private var tracking: NSTrackingArea?
     private var renderer = TreemapRenderer()
     private var themeAppearance: NSAppearance.Name?
+    private var themeDirty = true
 
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
@@ -49,8 +54,9 @@ final class TreemapNSView: NSView {
     /// Rebuild the palette only when the system appearance changes.
     private func themeIfNeeded() {
         let name = effectiveAppearance.name
-        guard themeAppearance != name else { return }
+        guard themeDirty || themeAppearance != name else { return }
         themeAppearance = name
+        themeDirty = false
         var theme = RenderTheme.standard
         effectiveAppearance.performAsCurrentDrawingAppearance {
             theme.background = NSColor.textBackgroundColor.cgColor
@@ -65,7 +71,11 @@ final class TreemapNSView: NSView {
             theme.linkMark = CGColor(red: dark ? 1.0 : 0.85, green: dark ? 0.42 : 0.12,
                                      blue: dark ? 0.42 : 0.20, alpha: 0.95)
         }
-        renderer = TreemapRenderer(theme: theme)
+        // User choices sit on top of the system-adaptive base, so an untouched
+        // slot still follows light and dark.
+        renderer = TreemapRenderer(theme: themeSettings.apply(to: theme),
+                                   fontName: themeSettings.mapFontName,
+                                   fontSize: CGFloat(themeSettings.mapFontSize))
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -132,6 +142,7 @@ struct TreemapView: NSViewRepresentable {
     var root: Int
     var options: TreemapOptions
     var showLabels: Bool
+    var appearance: AppearanceSettings
     var onOpen: (Int) -> Void
     var onInspect: (Int, CGPoint) -> Void
     var onGoUp: () -> Void
@@ -159,6 +170,7 @@ struct TreemapView: NSViewRepresentable {
             v.options = options
         }
         v.showLabels = showLabels
+        v.themeSettings = appearance
         v.onOpen = onOpen
         v.onInspect = onInspect
         v.onGoUp = onGoUp
