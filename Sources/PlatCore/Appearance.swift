@@ -57,31 +57,6 @@ public struct ColorRGBA: Codable, Equatable, Sendable {
     }
 }
 
-/// Which palette slot an unpinned extension falls into.
-///
-/// The renderer and the settings dialog must agree exactly: if they drift, the
-/// dialog shows a colour the map does not use.  So the hash lives here, once,
-/// and both call it.
-public enum ExtensionPalette {
-    /// FNV-1a over already-lowercased bytes.
-    public static func bucket(lowercasedBytes bytes: some Sequence<UInt8>, buckets: Int) -> Int {
-        guard buckets > 0 else { return 0 }
-        var h: UInt32 = 2166136261
-        var empty = true
-        for b in bytes {
-            empty = false
-            h = (h ^ UInt32(b)) &* 16777619
-        }
-        guard !empty else { return 0 }
-        return Int(h % UInt32(buckets))
-    }
-
-    public static func bucket(for ext: String, buckets: Int) -> Int {
-        bucket(lowercasedBytes: Array(AppearanceSettings.normalizeExtension(ext).utf8),
-               buckets: buckets)
-    }
-}
-
 /// The individually colourable parts of the map.
 public enum ThemeColor: String, CaseIterable, Codable, Sendable {
     case background, container, collapsed, aggregate, linkMark, outline, label, highlight
@@ -126,8 +101,9 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
     /// without the dot ("swift", "m").  Anything not listed falls back to the
     /// palette below, chosen by hashing the extension.
     public var extensionColors: [String: ColorRGBA]
-    /// Fallback palette for file boxes; nil keeps the built-in ten.
-    public var leaves: [ColorRGBA]?
+    /// Per-kind overrides, keyed by `FileKind.rawValue`.  Absent means that
+    /// kind keeps its built-in colour.
+    public var kindColors: [String: ColorRGBA]
     public var mapFontName: String
     public var mapFontSize: Double
     /// Base size for the details panel; the other sizes there are derived.
@@ -139,13 +115,13 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
 
     public init(colors: [String: ColorRGBA] = [:],
                 extensionColors: [String: ColorRGBA] = [:],
-                leaves: [ColorRGBA]? = nil,
+                kindColors: [String: ColorRGBA] = [:],
                 mapFontName: String = AppearanceSettings.defaultMapFontName,
                 mapFontSize: Double = AppearanceSettings.defaultMapFontSize,
                 uiFontSize: Double = AppearanceSettings.defaultUIFontSize) {
         self.colors = colors
         self.extensionColors = extensionColors
-        self.leaves = leaves
+        self.kindColors = kindColors
         self.mapFontName = mapFontName
         self.mapFontSize = mapFontSize
         self.uiFontSize = uiFontSize
@@ -198,13 +174,25 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
             case .highlight:  t.highlight = c
             }
         }
-        if let leaves, !leaves.isEmpty { t.leaves = leaves.map(\.cgColor) }
+        for (key, colour) in kindColors { t.kinds[key] = colour.cgColor }
         t.extensionColors = extensionColors.reduce(into: [:]) { $0[$1.key] = $1.value.cgColor }
         return t
     }
 
-    /// The built-in file-box palette, as editable values.
-    public static var defaultLeaves: [ColorRGBA] {
-        RenderTheme.standard.leaves.compactMap(ColorRGBA.init)
+    public func color(for kind: FileKind) -> ColorRGBA {
+        kindColors[kind.rawValue] ?? kind.defaultColor
+    }
+
+    public mutating func set(_ kind: FileKind, to colour: ColorRGBA?) {
+        if let colour { kindColors[kind.rawValue] = colour }
+        else { kindColors.removeValue(forKey: kind.rawValue) }
+    }
+
+    /// The colour a file with this extension gets right now: its pin if it has
+    /// one, otherwise its kind's colour.  The settings dialog previews with
+    /// this, so it cannot disagree with what the map draws.
+    public func effectiveColor(forExtension raw: String) -> ColorRGBA {
+        if let pinned = extensionColor(raw) { return pinned }
+        return color(for: FileKind.of(extension: raw))
     }
 }

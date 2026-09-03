@@ -49,7 +49,7 @@ private struct ColorSettings: View {
             HStack {
                 Button("Reset Colors") { prefs.resetColors() }
                     .disabled(prefs.appearance.colors.isEmpty
-                              && prefs.appearance.leaves == nil
+                              && prefs.appearance.kindColors.isEmpty
                               && prefs.appearance.extensionColors.isEmpty)
                 Spacer()
             }
@@ -127,9 +127,36 @@ private struct ColorSettings: View {
         }
 
         Divider().padding(.vertical, 4)
-        Text("Palette for everything else")
-            .font(.subheadline)
-        leafGrid
+        Text("File kinds")
+            .font(.headline)
+        Text("Every other file takes the colour of its kind.  macOS decides which "
+             + "kind a file is from its type, so anything it recognises is covered "
+             + "without listing extensions here.")
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+
+        ForEach(FileKind.allCases, id: \.self) { kind in
+            HStack(spacing: 12) {
+                ColorPicker("", selection: Binding(
+                    get: { prefs.appearance.color(for: kind).swiftUI },
+                    set: { prefs.appearance.set(kind, to: ColorRGBA($0)) }),
+                    supportsOpacity: false)
+                    .labelsHidden()
+                    .frame(width: 44)
+                Text(kind.displayName)
+                Spacer()
+                if let examples = examples(for: kind) {
+                    Text(examples)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.tertiary)
+                }
+                if prefs.appearance.kindColors[kind.rawValue] != nil {
+                    Button("Reset") { prefs.appearance.set(kind, to: nil) }
+                        .buttonStyle(.link)
+                }
+            }
+        }
     }
 
     private var suggestions: [ExtensionUsage] {
@@ -151,9 +178,15 @@ private struct ColorSettings: View {
     }
 
     private func currentColor(for ext: String) -> Color {
-        if let pinned = prefs.appearance.extensionColor(ext) { return pinned.swiftUI }
-        let palette = prefs.leafPalette
-        return palette[ExtensionPalette.bucket(for: ext, buckets: palette.count)].swiftUI
+        prefs.appearance.effectiveColor(forExtension: ext).swiftUI
+    }
+
+    /// Extensions from the open scan that land in this kind, so each row says
+    /// what it actually covers rather than leaving "Document" to the imagination.
+    private func examples(for kind: FileKind) -> String? {
+        let hits = usage.filter { FileKind.of(extension: $0.ext) == kind }
+            .prefix(4).map { "." + $0.ext }
+        return hits.isEmpty ? nil : hits.joined(separator: " ")
     }
 
     private func row(_ slot: ThemeColor) -> some View {
@@ -204,19 +237,6 @@ private struct ColorSettings: View {
         case .highlight:  c = t.highlight
         }
         return ColorRGBA(c) ?? ColorRGBA(red: 0, green: 0, blue: 0)
-    }
-
-    private var leafGrid: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 5),
-                  spacing: 8) {
-            ForEach(Array(prefs.leafPalette.enumerated()), id: \.offset) { index, colour in
-                ColorPicker("", selection: Binding(
-                    get: { colour.swiftUI },
-                    set: { prefs.setLeaf(index, to: ColorRGBA($0)) }),
-                    supportsOpacity: false)
-                    .labelsHidden()
-            }
-        }
     }
 }
 

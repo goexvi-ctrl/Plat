@@ -37,7 +37,7 @@ final class Preferences {
 
     func resetColors() {
         appearance.colors = [:]
-        appearance.leaves = nil
+        appearance.kindColors = [:]
         appearance.extensionColors = [:]
     }
 
@@ -47,18 +47,6 @@ final class Preferences {
         appearance.uiFontSize = AppearanceSettings.defaultUIFontSize
     }
 
-    /// The palette shown in the dialog: the user's, or the built-in one so the
-    /// wells start from the real colours rather than from black.
-    var leafPalette: [ColorRGBA] {
-        appearance.leaves ?? AppearanceSettings.defaultLeaves
-    }
-
-    func setLeaf(_ index: Int, to colour: ColorRGBA) {
-        var palette = leafPalette
-        guard palette.indices.contains(index) else { return }
-        palette[index] = colour
-        appearance.leaves = palette
-    }
 }
 
 extension ColorRGBA {

@@ -95,20 +95,31 @@ unopened folder, the grouped-small-files block, the hard-link flag, box
 outline, label text and hover highlight -- each labelled with what it actually
 colours.
 
-Below those, **file types**.  Pin a colour to any extension: a Swift programmer
-can have `.swift` orange and `.m` blue, whatever those happen to hash to.  Type
-an extension to add one, with or without the leading dot and in any case.
+Below those, **file kinds**.  Every file takes the colour of its kind --
+Application, Archive, Document, Executable, Image, Movie, Music, PDF,
+Presentation, Text or Other -- and each has a well.  The kind is not a table of
+extensions kept in this project: macOS already knows, through Uniform Type
+Identifiers, so anything the system recognises is classified without being
+listed here.  Each row also shows a few extensions from the scan you have open
+that land in that kind, so "Document" is not left to the imagination.
 
-Anything unpinned is coloured from a ten-colour palette, picked by hashing the
-extension -- which is why those colours mean nothing on their own.  To make
-that concrete the dialog lists the extensions using the most space **in the
-scan you have open**, each showing the colour it currently has; clicking one
-pins it at that colour, so nothing moves until you actually change it.
+Two decisions this project makes on top of Apple's hierarchy, since several
+types conform to more than one supertype:
 
-A colour you have not set follows the system light or dark appearance, and
-resetting one puts it back under that control rather than freezing it at a
-second hardcoded default.  So you can recolour one thing without the rest
-losing its dark-mode behaviour.
+* An interpreted program is the file you run, so `.py`, `.js`, `.sh` and the
+  rest are **Executable**, alongside `.o` and `.dylib`.  Source that has to be
+  compiled -- `.swift`, `.m`, `.c` -- conforms to neither and stays **Text**,
+  which is right: there the binary is the program, not the source.
+* PDF is checked before Document, and Application before Archive, because a PDF
+  is composite content too and an app is a bundle.
+
+Finally, **pinned extensions** override the kind.  Pin `.swift` orange and
+`.m` blue whatever their kinds say; type an extension with or without the
+leading dot, in any case.  This is also the escape hatch when the system's
+guess is wrong for your work -- `.ts` resolves to an MPEG transport stream, not
+TypeScript.  The dialog lists the extensions using the most space in the open
+scan, each in the colour it currently has; clicking one pins it at that colour,
+so nothing moves until you change it.
 
 *Fonts* sets the family and size of the labels drawn inside boxes, and the size
 of the details panel.  Raising the map font raises the label strip with it, so

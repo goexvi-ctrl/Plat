@@ -19,8 +19,9 @@ public struct RenderTheme: Sendable {
     public var outline: CGColor
     public var label: CGColor
     public var highlight: CGColor
-    /// Leaf colours, picked by file extension so files of one kind read as a group.
-    public var leaves: [CGColor]
+    /// One colour per file kind, keyed by `FileKind.rawValue`.  A file takes
+    /// its kind's colour unless its extension is pinned below.
+    public var kinds: [String: CGColor]
     /// Colours pinned to specific extensions, keyed lowercased without the dot.
     /// Consulted before the palette; empty by default, and when it is empty the
     /// renderer skips the lookup entirely.
@@ -28,7 +29,7 @@ public struct RenderTheme: Sendable {
 
     public init(background: CGColor, container: CGColor, collapsed: CGColor,
                 aggregate: CGColor, linkMark: CGColor, outline: CGColor,
-                label: CGColor, highlight: CGColor, leaves: [CGColor]) {
+                label: CGColor, highlight: CGColor, kinds: [String: CGColor]) {
         self.linkMark = linkMark
         self.background = background
         self.container = container
@@ -37,7 +38,7 @@ public struct RenderTheme: Sendable {
         self.outline = outline
         self.label = label
         self.highlight = highlight
-        self.leaves = leaves
+        self.kinds = kinds
     }
 
     public static let standard = RenderTheme(
@@ -49,18 +50,7 @@ public struct RenderTheme: Sendable {
         outline: CGColor(gray: 0, alpha: 0.28),
         label: CGColor(gray: 0.1, alpha: 1),
         highlight: CGColor(red: 0.0, green: 0.48, blue: 1.0, alpha: 1),
-        leaves: [
-            CGColor(red: 0.35, green: 0.55, blue: 0.85, alpha: 1),
-            CGColor(red: 0.90, green: 0.62, blue: 0.25, alpha: 1),
-            CGColor(red: 0.42, green: 0.72, blue: 0.48, alpha: 1),
-            CGColor(red: 0.82, green: 0.44, blue: 0.46, alpha: 1),
-            CGColor(red: 0.60, green: 0.50, blue: 0.80, alpha: 1),
-            CGColor(red: 0.30, green: 0.68, blue: 0.72, alpha: 1),
-            CGColor(red: 0.85, green: 0.72, blue: 0.35, alpha: 1),
-            CGColor(red: 0.70, green: 0.52, blue: 0.40, alpha: 1),
-            CGColor(red: 0.52, green: 0.62, blue: 0.35, alpha: 1),
-            CGColor(red: 0.78, green: 0.50, blue: 0.68, alpha: 1),
-        ])
+kinds: FileKind.allCases.reduce(into: [:]) { $0[$1.rawValue] = $1.defaultColor.cgColor })
 }
 
 /// Paints a laid-out `Treemap`.
@@ -146,37 +136,11 @@ public struct TreemapRenderer {
         if box.hasChildren { return theme.container }
         // A folder we chose not to open: show it as a solid block.
         if node.isDirectory { return node.childCount > 0 ? theme.collapsed : theme.container }
-        // A pinned extension wins over the palette.  Building the key costs a
-        // small String per box, so it is skipped entirely when nothing is
-        // pinned -- which is the default.
-        if !theme.extensionColors.isEmpty,
-           let key = extensionKey(of: node, in: names),
-           let pinned = theme.extensionColors[key] {
-            return pinned
-        }
-        return theme.leaves[extensionBucket(of: node, in: names, buckets: theme.leaves.count)]
-    }
-
-    /// Which palette slot this node's extension falls into.  Folds case in
-    /// place rather than building a String, then defers to ExtensionPalette so
-    /// the settings dialog cannot disagree about the answer.
-    private func extensionBucket(of node: FileTree.Node,
-                                 in names: UnsafeBufferPointer<UInt8>,
-                                 buckets: Int) -> Int {
-        let lo = Int(node.nameOffset)
-        let hi = lo + Int(node.nameLength)
-        var dot = -1
-        var i = hi - 1
-        while i > lo {
-            if names[i] == UInt8(ascii: ".") { dot = i; break }
-            i -= 1
-        }
-        guard dot >= 0, dot + 1 < hi else { return 0 }
-        let folded = ((dot + 1) ..< hi).lazy.map { j -> UInt8 in
-            let b = names[j]
-            return b >= 65 && b <= 90 ? b + 32 : b
-        }
-        return ExtensionPalette.bucket(lowercasedBytes: folded, buckets: buckets)
+        // A pinned extension wins; otherwise the file takes its kind's colour.
+        let ext = extensionKey(of: node, in: names)
+        if let ext, let pinned = theme.extensionColors[ext] { return pinned }
+        let kind = ext.map(FileKind.of(extension:)) ?? .other
+        return theme.kinds[kind.rawValue] ?? kind.defaultColor.cgColor
     }
 
     private func extensionKey(of node: FileTree.Node,

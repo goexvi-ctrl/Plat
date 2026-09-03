@@ -45,7 +45,7 @@ final class AppearanceTests: XCTestCase {
         // Everything else is untouched.
         XCTAssertEqual(ColorRGBA(themed.collapsed)?.hex,
                        ColorRGBA(RenderTheme.standard.collapsed)?.hex)
-        XCTAssertEqual(themed.leaves.count, RenderTheme.standard.leaves.count)
+        XCTAssertEqual(themed.kinds.count, RenderTheme.standard.kinds.count)
     }
 
     func testEverySlotCanBeOverridden() {
@@ -71,18 +71,13 @@ final class AppearanceTests: XCTestCase {
         XCTAssertTrue(s.isDefault)
     }
 
-    func testLeafPaletteReplacement() {
+    func testKindColoursReachTheTheme() {
         var s = AppearanceSettings()
-        XCTAssertEqual(s.apply(to: .standard).leaves.count, 10)
-        s.leaves = [ColorRGBA(red: 1, green: 1, blue: 0)]
-        XCTAssertEqual(s.apply(to: .standard).leaves.count, 1)
-        s.leaves = []      // empty is not a palette; keep the built-in one
-        XCTAssertEqual(s.apply(to: .standard).leaves.count, 10)
-    }
-
-    func testDefaultLeavesMatchTheBuiltInPalette() {
-        XCTAssertEqual(AppearanceSettings.defaultLeaves.count,
-                       RenderTheme.standard.leaves.count)
+        XCTAssertEqual(s.apply(to: .standard).kinds.count, FileKind.allCases.count)
+        s.set(.image, to: ColorRGBA(hex: "00FF00FF")!)
+        let t = s.apply(to: .standard)
+        XCTAssertEqual(ColorRGBA(t.kinds["image"]!)?.hex, "00FF00FF")
+        XCTAssertEqual(ColorRGBA(t.kinds["movie"]!)?.hex, FileKind.movie.defaultColor.hex)
     }
 
     // MARK: Fonts
@@ -102,7 +97,7 @@ final class AppearanceTests: XCTestCase {
         let s = AppearanceSettings()
         XCTAssertTrue(s.isDefault)
         XCTAssertTrue(s.colors.isEmpty)
-        XCTAssertNil(s.leaves)
+        XCTAssertTrue(s.kindColors.isEmpty)
         XCTAssertEqual(s.mapFontSize, 10)
         XCTAssertEqual(s.labelHeight, 13, "the strip stays 13pt at the default font")
     }
@@ -110,7 +105,7 @@ final class AppearanceTests: XCTestCase {
     func testSettingsSurviveEncoding() throws {
         var s = AppearanceSettings()
         s.set(.highlight, to: ColorRGBA(red: 0.1, green: 0.2, blue: 0.3, alpha: 0.4))
-        s.leaves = [ColorRGBA(red: 1, green: 0, blue: 0)]
+        s.set(.archive, to: ColorRGBA(red: 1, green: 0, blue: 0))
         s.mapFontName = "Menlo"
         s.mapFontSize = 12
         let back = try JSONDecoder().decode(
@@ -161,22 +156,30 @@ final class ExtensionColorTests: XCTestCase {
         XCTAssertTrue(s.isDefault)
     }
 
-    /// The dialog previews the palette colour an unpinned extension will get.
-    /// If its hash disagreed with the renderer's, it would show the wrong one.
-    func testPaletteHashIsStableAndCaseInsensitive() {
-        for ext in ["swift", "m", "png", "tar.gz", "a"] {
-            let a = ExtensionPalette.bucket(for: ext, buckets: 10)
-            XCTAssertEqual(a, ExtensionPalette.bucket(for: "." + ext.uppercased(), buckets: 10),
-                           "case or a leading dot changed the bucket for \(ext)")
-            XCTAssertEqual(a, ExtensionPalette.bucket(lowercasedBytes: Array(ext.utf8), buckets: 10),
-                           "the String and bytes forms disagree for \(ext)")
-            XCTAssertTrue((0 ..< 10).contains(a))
-        }
+    /// The dialog previews with the same resolver the renderer uses, so the two
+    /// cannot disagree about what colour a file will be.
+    func testEffectiveColorPrefersAPinOverTheKind() {
+        var s = AppearanceSettings()
+        XCTAssertEqual(s.effectiveColor(forExtension: "png").hex,
+                       FileKind.image.defaultColor.hex)
+        s.setExtension("png", to: ColorRGBA(hex: "010203FF")!)
+        XCTAssertEqual(s.effectiveColor(forExtension: "png").hex, "010203FF")
     }
 
-    func testPaletteHashHandlesDegenerateInput() {
-        XCTAssertEqual(ExtensionPalette.bucket(for: "", buckets: 10), 0)
-        XCTAssertEqual(ExtensionPalette.bucket(for: "swift", buckets: 0), 0)
+    func testKindColourCanBeOverriddenAndReset() {
+        var s = AppearanceSettings()
+        XCTAssertEqual(s.color(for: .movie).hex, FileKind.movie.defaultColor.hex)
+        s.set(.movie, to: ColorRGBA(hex: "ABCDEFFF")!)
+        XCTAssertEqual(s.color(for: .movie).hex, "ABCDEFFF")
+        XCTAssertEqual(ColorRGBA(s.apply(to: .standard).kinds["movie"]!)?.hex, "ABCDEFFF")
+        s.set(.movie, to: nil)
+        XCTAssertEqual(s.color(for: .movie).hex, FileKind.movie.defaultColor.hex)
+        XCTAssertTrue(s.isDefault)
+    }
+
+    func testEveryKindHasADistinctDefault() {
+        let hexes = FileKind.allCases.map(\.defaultColor.hex)
+        XCTAssertEqual(Set(hexes).count, hexes.count, "two kinds share a colour")
     }
 }
 
@@ -221,5 +224,61 @@ final class ExtensionUsageTests: XCTestCase {
 
     func testEmptyTree() {
         XCTAssertTrue(FileTree.empty.extensionUsage().isEmpty)
+    }
+}
+
+/// The kind mapping comes from the system's Uniform Type Identifiers, so these
+/// pin the decisions this project makes on top of it rather than re-testing
+/// macOS.
+final class FileKindTests: XCTestCase {
+
+    func testTheObviousKinds() {
+        XCTAssertEqual(FileKind.of(extension: "png"), .image)
+        XCTAssertEqual(FileKind.of(extension: "jpg"), .image)
+        XCTAssertEqual(FileKind.of(extension: "mp4"), .movie)
+        XCTAssertEqual(FileKind.of(extension: "mp3"), .music)
+        XCTAssertEqual(FileKind.of(extension: "zip"), .archive)
+        XCTAssertEqual(FileKind.of(extension: "pdf"), .pdf)
+        XCTAssertEqual(FileKind.of(extension: "app"), .application)
+        XCTAssertEqual(FileKind.of(extension: "key"), .presentation)
+        XCTAssertEqual(FileKind.of(extension: "docx"), .document)
+    }
+
+    /// An interpreted program is the file you run, so it belongs with binaries.
+    func testScriptsAreExecutables() {
+        for ext in ["py", "js", "sh", "rb", "pl", "zsh", "bash"] {
+            XCTAssertEqual(FileKind.of(extension: ext), .executable,
+                           ".\(ext) is a program, not prose")
+        }
+    }
+
+    func testCompiledBinariesAreExecutables() {
+        for ext in ["o", "dylib", "exe"] {
+            XCTAssertEqual(FileKind.of(extension: ext), .executable)
+        }
+    }
+
+    /// Source that has to be compiled is not itself the program.
+    func testCompiledSourceIsText() {
+        for ext in ["swift", "m", "c", "h", "txt", "md", "json", "html"] {
+            XCTAssertEqual(FileKind.of(extension: ext), .text,
+                           ".\(ext) should be text")
+        }
+    }
+
+    func testPDFBeatsDocument() {
+        XCTAssertEqual(FileKind.of(extension: "pdf"), .pdf,
+                       "a PDF is composite content too; the more specific kind wins")
+    }
+
+    func testUnknownAndEmpty() {
+        XCTAssertEqual(FileKind.of(extension: "zzzznotathing"), .other)
+        XCTAssertEqual(FileKind.of(extension: ""), .other)
+        XCTAssertEqual(FileKind.of(extension: "."), .other)
+    }
+
+    func testLookupIgnoresDotAndCase() {
+        XCTAssertEqual(FileKind.of(extension: ".PNG"), .image)
+        XCTAssertEqual(FileKind.of(extension: "PnG"), .image)
     }
 }
