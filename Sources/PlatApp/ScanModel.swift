@@ -265,6 +265,10 @@ final class ScanModel {
         /// Where it landed in the Trash.  Nil if macOS did not say, in which
         /// case Plat cannot offer to put it back itself.
         var trashURL: URL?
+        /// The Trash folder's node, when the scan covered it, so the bytes can
+        /// be charged there instead of vanishing.  Nil when the Trash lies
+        /// outside the scanned tree, where the file really has left.
+        var trashNode: Int?
     }
 
     var canDelete: Bool { isReady }
@@ -321,9 +325,20 @@ final class ScanModel {
             // The tree changes only once the file has actually moved, so a
             // refused delete never leaves the map lying about the disk.
             guard let removal = tree.remove(request.node) else { return }
+
+            // Nothing was destroyed -- it moved to the Trash.  When the scan
+            // covered the Trash, which it does for a whole volume or a home
+            // folder, charge the bytes there so the map agrees with what a
+            // rescan would find, and the Trash visibly grows.
+            let trashNode = trashed
+                .map { $0.deletingLastPathComponent().path }
+                .flatMap { tree.index(ofPath: $0) }
+            if let trashNode { tree.reattribute(removal, to: trashNode) }
+
             lastDelete = CompletedDelete(removal: removal,
                                          name: request.name,
-                                         trashURL: trashed)
+                                         trashURL: trashed,
+                                         trashNode: trashNode)
             // The free block was credited by inference; correct it against what
             // the volume really reports.  This is what makes a hard-linked
             // delete honest -- the blocks do not come back, and the difference
@@ -422,6 +437,7 @@ final class ScanModel {
         guard let last = lastDelete, let trashed = last.trashURL else { return }
         do {
             try Trash.putBack(from: trashed, to: URL(fileURLWithPath: last.removal.path))
+            if let node = last.trashNode { tree.unattribute(last.removal, from: node) }
             tree.restore(last.removal)
             tree.refreshVolumeAccounting()
             lastDelete = nil

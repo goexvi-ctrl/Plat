@@ -183,3 +183,111 @@ final class VolumeRefreshTests: XCTestCase {
         XCTAssertEqual(tree.totalSize, before)
     }
 }
+
+/// Charging a deleted item's bytes to the folder they actually moved into.
+///
+/// Deleting does not destroy anything: the file goes to the Trash, which on a
+/// whole-volume scan is a folder the scan already walked.  These check that
+/// Plat's patched tree then says exactly what a fresh scan would.
+final class ReattributionTests: XCTestCase {
+
+    private var root: URL!
+
+    override func setUpWithError() throws {
+        root = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("plat-reattr-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(
+            at: root.appendingPathComponent("bin"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            at: root.appendingPathComponent("work"), withIntermediateDirectories: true)
+        try Data(repeating: 4, count: 2_000_000)
+            .write(to: root.appendingPathComponent("work/big.bin"))
+        try Data(repeating: 4, count: 30_000)
+            .write(to: root.appendingPathComponent("work/small.bin"))
+    }
+
+    override func tearDownWithError() throws { try? FileManager.default.removeItem(at: root) }
+
+    func testPathLookupFindsNodes() throws {
+        let tree = try FileScanner.scan(path: root.path)
+        XCTAssertEqual(tree.index(ofPath: root.path), 0, "the root resolves to node 0")
+        let bin = try XCTUnwrap(tree.index(ofPath: root.appendingPathComponent("bin").path))
+        XCTAssertEqual(tree.name(of: bin), "bin")
+        let big = try XCTUnwrap(tree.index(ofPath: root.appendingPathComponent("work/big.bin").path))
+        XCTAssertEqual(tree.name(of: big), "big.bin")
+    }
+
+    func testPathLookupRejectsWhatIsNotThere() throws {
+        let tree = try FileScanner.scan(path: root.path)
+        XCTAssertNil(tree.index(ofPath: "/etc/hosts"), "outside the scan")
+        XCTAssertNil(tree.index(ofPath: root.appendingPathComponent("nope").path))
+        XCTAssertNil(tree.index(ofPath: root.path + "-sibling"),
+                     "a sibling whose name merely starts the same way")
+    }
+
+    /// The property that matters: after moving a file into a folder the scan
+    /// knows about, the patched tree matches a fresh scan exactly.
+    func testMoveIntoAKnownFolderMatchesARescan() throws {
+        var tree = try FileScanner.scan(path: root.path)
+        let totalBefore = tree.totalSize
+
+        let node = try XCTUnwrap(tree.index(ofPath: root.appendingPathComponent("work/big.bin").path))
+        let bin = try XCTUnwrap(tree.index(ofPath: root.appendingPathComponent("bin").path))
+
+        try FileManager.default.moveItem(at: root.appendingPathComponent("work/big.bin"),
+                                         to: root.appendingPathComponent("bin/big.bin"))
+        let removal = try XCTUnwrap(tree.remove(node))
+        tree.reattribute(removal, to: bin)
+
+        let fresh = try FileScanner.scan(path: root.path)
+        XCTAssertEqual(tree.totalSize, totalBefore, "nothing left the tree")
+        XCTAssertEqual(tree.totalSize, fresh.totalSize)
+        XCTAssertEqual(tree.stats.files, fresh.stats.files)
+        XCTAssertEqual(tree.stats.directories, fresh.stats.directories)
+
+        let freshBin = try XCTUnwrap(fresh.index(ofPath: root.appendingPathComponent("bin").path))
+        XCTAssertEqual(tree.size(of: bin), fresh.size(of: freshBin),
+                       "the destination folder carries the weight")
+        let freshWork = try XCTUnwrap(fresh.index(ofPath: root.appendingPathComponent("work").path))
+        let work = try XCTUnwrap(tree.index(ofPath: root.appendingPathComponent("work").path))
+        XCTAssertEqual(tree.size(of: work), fresh.size(of: freshWork))
+    }
+
+    /// Undo has to unwind both halves, or the destination keeps the weight.
+    func testUnattributeIsTheExactInverse() throws {
+        var tree = try FileScanner.scan(path: root.path)
+        let sizes = (0 ..< tree.nodes.count).map { tree.size(of: $0) }
+        let statsBefore = tree.stats
+
+        let node = try XCTUnwrap(tree.index(ofPath: root.appendingPathComponent("work/big.bin").path))
+        let bin = try XCTUnwrap(tree.index(ofPath: root.appendingPathComponent("bin").path))
+
+        let removal = try XCTUnwrap(tree.remove(node))
+        tree.reattribute(removal, to: bin)
+        XCTAssertNotEqual((0 ..< tree.nodes.count).map { tree.size(of: $0) }, sizes)
+
+        tree.unattribute(removal, from: bin)
+        tree.restore(removal)
+
+        XCTAssertEqual((0 ..< tree.nodes.count).map { tree.size(of: $0) }, sizes)
+        XCTAssertEqual(tree.stats, statsBefore)
+    }
+
+    /// When the destination is outside the scan there is nothing to charge, and
+    /// the tree simply shrinks -- which is also what a rescan would say.
+    func testMoveOutOfTheScannedTreeJustShrinks() throws {
+        var tree = try FileScanner.scan(path: root.path)
+        let node = try XCTUnwrap(tree.index(ofPath: root.appendingPathComponent("work/big.bin").path))
+        let away = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("plat-away-\(UUID().uuidString).bin")
+        defer { try? FileManager.default.removeItem(at: away) }
+
+        try FileManager.default.moveItem(at: root.appendingPathComponent("work/big.bin"), to: away)
+        XCTAssertNil(tree.index(ofPath: away.path), "the destination is not in the tree")
+        tree.remove(node)
+
+        let fresh = try FileScanner.scan(path: root.path)
+        XCTAssertEqual(tree.totalSize, fresh.totalSize)
+        XCTAssertEqual(tree.stats.files, fresh.stats.files)
+    }
+}

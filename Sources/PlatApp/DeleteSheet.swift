@@ -86,11 +86,12 @@ struct DeleteSheet: View {
     private var sizeLine: some View {
         VStack(alignment: .leading, spacing: 3) {
             if request.assessment.freesNothing {
-                Text("Recovers no space")
+                Text("Frees no space, even after emptying the Trash")
                     .font(.system(size: bodySize, weight: .semibold))
                     .foregroundStyle(.orange)
             } else {
-                Text("Recovers \(ByteFormat.string(request.assessment.reclaims))"
+                Text("Frees \(ByteFormat.string(request.assessment.reclaims)) "
+                     + "when you empty the Trash"
                      + (request.isDirectory
                         ? ", with \(ByteFormat.count(request.files)) files and "
                           + "\(ByteFormat.count(request.folders)) folders"
@@ -98,7 +99,8 @@ struct DeleteSheet: View {
                     .font(.system(size: bodySize, weight: .semibold))
                     .fixedSize(horizontal: false, vertical: true)
             }
-            Text("It goes to the Trash; Edit \u{203A} Undo puts it back.")
+            Text("Until then it still occupies the disk, in the Trash. "
+                 + "Edit \u{203A} Undo puts it back.")
                 .font(.system(size: smallSize))
                 .foregroundStyle(.tertiary)
         }

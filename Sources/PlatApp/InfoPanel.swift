@@ -135,9 +135,10 @@ struct InfoPanel: View {
         case .notScanned:
             return "Space the volume reports as in use that this scan did not "
                  + "see: other volumes sharing the same container, APFS "
-                 + "snapshots, folders it was not permitted to read, and "
-                 + "purgeable space.  macOS reports no size per snapshot, so "
-                 + "these cannot be separated."
+                 + "snapshots, folders it was not permitted to read \u{2014} "
+                 + "including a volume's own .Trashes, which is not listable "
+                 + "\u{2014} and purgeable space.  macOS reports no size per "
+                 + "snapshot, so these cannot be separated."
         case nil:
             return ""
         }

@@ -7,6 +7,10 @@ whose area is its size.  A *plat* is a surveyor's map of land divided into
 parcels, drawn to scale, used to work out what a piece of ground is worth --
 which is exactly what this draws, and what you use it for.
 
+You can act on what you find without leaving it: preview a file, drag it out to
+somewhere else, or move it to the Trash -- with a word first about what that is
+likely to break.
+
 This is a rewrite in Swift of a Cocoa program written in 2004 that was
 called SpaceMonger, after the Windows program of the same name.  We renamed
 the program Plat to protect the innocent.
@@ -44,10 +48,15 @@ folder's name and size along the top.
 | **Click** a box or its title strip | Details for that file or folder |
 | **Double-click** a box | Zoom in, so that folder fills the window |
 | **Right-click** | Go back up one level |
-| **Hover** | Full path and size in the status bar |
+| **Hover** | Name in a tooltip; full path and size in the status bar |
+| **Space** | Quick Look the box under the pointer |
+| **Delete** | Move it to the Trash, after a confirmation |
+| **Drag a box out** | Copy or move the file to anywhere that takes files |
 | **Cmd-Up** | Up one level |
 | **Shift-Cmd-Up** | Back to the top |
 | **Shift-Cmd-G** | Jump to a folder by name |
+| **Shift-Cmd-B** | Open bundles up, or shut them again |
+| **Cmd-Z** | Put back the last thing deleted |
 | **Cmd-R** | Scan the same folder again |
 
 The path in the toolbar runs from the folder you scanned down to where you are
@@ -65,15 +74,18 @@ with the time it was built.  A build from a modified tree corresponds to no
 commit, so the hash alone would be misleading.
 
 The details panel is set large enough to read at a glance.  It gives the size
-both readably and in exact bytes, the kind of file, how many items a folder
-holds directly and in total, and what share of its parent and of the whole scan
-it accounts for.  **Click the name or the path in the panel to copy it.**
+both readably and in exact bytes, the kind of file, what the file actually
+contains, how many items a folder holds directly and in total, and what share
+of its parent and of the whole scan it accounts for.  **Click the name or the
+path in the panel to copy it.**
+
 There are buttons to **Quick Look** it, **Open** it in whatever application
-handles it, **Reveal** it in the Finder, and to zoom in.  Quick Look is the
-same system panel the Finder uses -- it is not Finder-only, any app can drive
-it -- so a picture or a movie previews in place without launching anything.  A
-scan is a snapshot, so if the file has been deleted since, the panel says so
-and those buttons are disabled.
+handles it, **Reveal** it in the Finder, **Move it to the Trash**, and to zoom
+in, along with a one-line verdict on how risky deleting it would be.  Quick
+Look is the same system panel the Finder uses -- it is not Finder-only, any app
+can drive it -- so a picture or a movie previews in place without launching
+anything.  A scan is a snapshot, so if the file has been deleted since, the
+panel says so and those buttons are disabled.
 
 ## Reading the map
 
@@ -180,6 +192,26 @@ report -- and splitting it further would mean inventing figures.  A large one
 usually means either many local snapshots (`tmutil listlocalsnapshots /`) or a
 scan that could not read much of the disk.
 
+### The Trash is not free space
+
+Nothing in the Trash is free.  Those files still occupy the disk until the Trash
+is emptied, and Plat counts them as used, because `statfs` does.
+
+Where they *appear* depends on whether the scan can read them:
+
+* **Your own Trash**, `~/.Trash`, is an ordinary folder that only you can read
+  -- and you are the one running Plat, so a scan of `/` or of your home folder
+  walks it like any other folder and itemises what is in there.
+* **A volume's Trash**, `/Volumes/<name>/.Trashes/<uid>`, sits inside a
+  directory that is not listable, so those bytes land in **Not scanned** along
+  with everything else the walk could not reach.
+
+This is why deleting something in Plat does not make the free-space block grow.
+The file has moved, not gone: the folder it was in shrinks, the Trash grows by
+the same amount, and free space does not move until you empty the Trash.  Plat
+charges the bytes to the Trash's own box rather than writing them off, so the
+map keeps saying exactly what a fresh scan would say.
+
 Scanning a folder rather than a volume adds nothing; there is no capacity to
 report.
 
@@ -219,14 +251,17 @@ on how many names point at it, so Logical size is never divided.
 
 ## Deleting things
 
-Finding the space is only half of it.  Select a box and press **Delete**, or use
-**Move to Trash** in the details popover.
+Finding the space is only half of it.  Point at a box and press **Delete**, or
+use **Move to Trash** in the details popover.  It works from Quick Look too:
+look at a file, decide it is junk, and press Delete without dismissing the
+preview first.
 
-Nothing is ever unlinked.  Items go to the Trash, and **Cmd-Z** puts the last one
-back -- on disk and on the map.  The map updates immediately: the folder's boxes
-disappear, every folder above it shrinks, and on a whole-volume scan the freed
-blocks show up in the free-space block, so the picture still adds up to the size
-of the disk without a rescan.
+Nothing is ever unlinked.  Items go to the Trash, and **Cmd-Z** puts the last
+one back -- on disk and on the map.  The map updates immediately and without a
+rescan: the box disappears, every folder above it shrinks, and the bytes are
+charged to the Trash, which is where they now are.  Free space does not move
+until the Trash is emptied, and Plat does not pretend otherwise -- see
+[The Trash is not free space](#the-trash-is-not-free-space).
 
 ### The warning you get first
 
@@ -397,6 +432,9 @@ and all.  It is there because some people liked it.
   itself is still scanned, because plenty there -- `.Spotlight-V100`,
   `.DocumentRevisions-V100`, `MobileSoftwareUpdate` -- has no firmlink pointing
   at it.
+* **A volume's `.Trashes`** cannot be listed, so what is in there shows up
+  under "Not scanned" rather than as files.  `~/.Trash` is readable and is
+  scanned normally.
 * **Sockets, pipes and devices** are skipped; they occupy no meaningful space.
 * **Folders themselves** are measured only by what they contain.  The few
   blocks a directory's own entries occupy are not counted, so a total can sit a
@@ -478,3 +516,14 @@ The layout is computed once per view and reused for drawing, hit testing and
 hover, and it only descends into boxes large enough to see.  Laying out a
 750,000-node tree takes about a millisecond, so resizing and navigating stay
 immediate no matter how large the scan.
+
+Deleting patches that tree in place rather than scanning again.  Children of a
+node are stored as one contiguous run, so removing an entry from the middle
+would shift every index above it; instead the node is marked gone, its weight
+comes off each folder above it, and the same weight is added to the folder the
+file actually moved into.  That is O(depth) either way, which is why undo is
+instant.  Afterwards the volume's own figures are re-read with `statfs` rather
+than inferred, because Plat cannot know from the outside whether bytes were
+really returned -- a file moved to the Trash, or to another folder on the same
+disk, frees nothing.  Tests check that the patched tree reports exactly what a
+fresh scan of the same folder reports.

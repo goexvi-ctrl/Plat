@@ -401,6 +401,63 @@ public struct FileTree: Sendable {
         stats.totalBytes += logical
     }
 
+    /// Find the node for an absolute path, if the scan covered it.
+    ///
+    /// Walks the name components from the root, which is linear in the children
+    /// at each level.  That is fine for the short paths this is asked about --
+    /// a Trash folder is three or four levels down -- and it avoids carrying a
+    /// path index that a multi-million-node scan cannot afford.
+    public func index(ofPath path: String) -> Int? {
+        guard !nodes.isEmpty else { return nil }
+        let base = rootPath == "/" ? "" : rootPath
+        guard path == rootPath || path.hasPrefix(base + "/") else { return nil }
+
+        var i = 0
+        for component in path.dropFirst(base.count).split(separator: "/") {
+            let wanted = String(component)
+            guard let next = children(of: i).first(where: {
+                !nodes[$0].isSynthetic && !nodes[$0].isDeleted && name(of: $0) == wanted
+            }) else { return nil }
+            i = next
+        }
+        return i
+    }
+
+    /// Charge a removed item's bytes to a directory that is still in the tree.
+    ///
+    /// Deleting does not destroy anything: it moves the file to the Trash,
+    /// which on a whole-volume scan is a folder the scan already walked.  So
+    /// the bytes have not left, they have moved -- and `remove` alone would
+    /// report them gone, which a rescan would immediately contradict.  Adding
+    /// them to the Trash's node keeps the scanned total, the free space and the
+    /// unaccounted block all exactly where a fresh scan would put them, and
+    /// shows the Trash growing, which is the true story.
+    public mutating func reattribute(_ r: Removal, to directory: Int) {
+        shift(r, into: directory, sign: 1)
+    }
+
+    /// Take the charge back, when the file comes out of the Trash again.
+    public mutating func unattribute(_ r: Removal, from directory: Int) {
+        shift(r, into: directory, sign: -1)
+    }
+
+    private mutating func shift(_ r: Removal, into directory: Int, sign: Int64) {
+        guard directory >= 0, directory < nodes.count else { return }
+        var i = directory
+        while i >= 0 {
+            nodes[i].allocatedSize += r.allocatedSize * sign
+            nodes[i].allocatedShared += r.allocatedShared * sign
+            nodes[i].logicalSize += r.logicalSize * sign
+            i = Int(nodes[i].parent)
+        }
+        stats.files += r.files * Int(sign)
+        stats.directories += r.folders * Int(sign)
+        stats.allocatedBytes += r.allocatedSize * sign
+        stats.sharedBytes += r.allocatedShared * sign
+        stats.totalBytes += r.logicalSize * sign
+        revision += 1
+    }
+
     /// Re-read the volume's real figures and rebuild the two capacity blocks
     /// around whatever the tree now holds.
     ///
