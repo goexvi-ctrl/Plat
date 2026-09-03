@@ -123,10 +123,10 @@ struct ContentView: View {
         }
     }
 
-    /// Q, or space, on the box under the pointer.  Quick Look when there is a
-    /// file to look at; otherwise the details, which name the kind of thing it
-    /// is -- a capacity block has no file to preview, and neither does a name
-    /// whose file has since been deleted.
+    /// Space on the box under the pointer, as in the Finder.  Quick Look when
+    /// there is a file to look at; otherwise the details, which name the kind
+    /// of thing it is -- a capacity block has no file to preview, and neither
+    /// does a name whose file has since been deleted.
     private func preview(_ node: Int, at point: CGPoint) {
         let entry = model.tree.nodes[node]
         let path = model.tree.path(of: node)
@@ -266,8 +266,8 @@ struct ContentView: View {
                 }
             } else if case .ready = model.phase {
                 Text("Click for details \u{2022} double-click to zoom in \u{2022} "
-                     + "right-click to go back \u{2022} Q to Quick Look \u{2022} "
-                     + "Delete to trash \u{2022} drag a box out")
+                     + "right-click to go back \u{2022} Space to Quick Look "
+                     + "\u{2022} Delete to trash \u{2022} drag a box out")
                     .foregroundStyle(.tertiary)
             }
             Spacer()

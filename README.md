@@ -296,7 +296,7 @@ pointer crosses into another box, with no second wait.
 
 ## Looking at a file
 
-Press **Q**, or **Space**, over a box to Quick Look it -- the same preview the
+Press **Space** over a box to Quick Look it -- the same preview the
 Finder gives, in the same system panel.  A capacity block has no file to
 preview, and neither does a name whose file has since been deleted; those show
 the details popover instead.

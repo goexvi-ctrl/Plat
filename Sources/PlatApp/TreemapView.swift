@@ -33,6 +33,9 @@ final class TreemapNSView: NSView, NSDraggingSource {
     private var tracking: NSTrackingArea?
     private var renderer = TreemapRenderer()
     private let tooltip = MapTooltip()
+    /// Held so they can be taken down again: a view can move between windows,
+    /// and observing twice would run everything twice.
+    private var observers: [NSObjectProtocol] = []
     private var themeAppearance: NSAppearance.Name?
     private var themeDirty = true
     /// Where the mouse went down, and on what, so a drag can be told from a
@@ -110,15 +113,31 @@ final class TreemapNSView: NSView, NSDraggingSource {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         tooltip.hide()
+        observers.forEach(NotificationCenter.default.removeObserver)
+        observers.removeAll()
         guard let window else { return }
         window.makeFirstResponder(self)
         // Tracking is .activeInKeyWindow, so a window losing key stops sending
         // mouseMoved -- and would strand a tooltip on screen.
-        NotificationCenter.default.addObserver(
+        observers.append(NotificationCenter.default.addObserver(
             forName: NSWindow.didResignKeyNotification, object: window, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.tooltip.hide() }
-        }
+        })
+        // Quick Look, a sheet or another application takes the keyboard and
+        // does not always give it back to the map.  Reclaim it when the window
+        // is key again, so Delete and Space keep working without a click.
+        observers.append(NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, let window = self.window else { return }
+                // Never out of a field being typed into: the toolbar has one.
+                guard !(window.firstResponder is NSText),
+                      window.firstResponder !== self else { return }
+                window.makeFirstResponder(self)
+            }
+        })
     }
 
     override func updateTrackingAreas() {
@@ -242,27 +261,46 @@ final class TreemapNSView: NSView, NSDraggingSource {
     /// looking at.  Nothing happens without a target, and the model still puts
     /// a confirmation in the way.
     override func keyDown(with event: NSEvent) {
-        guard let box = hovered, !box.isAggregate else {
+        let deleteKeys: Set<UInt16> = [51, 117]   // delete, forward delete
+        let deleting = deleteKeys.contains(event.keyCode)
+        let previewing = !event.modifierFlags.contains(.command)
+            && event.charactersIgnoringModifiers == " "
+        guard deleting || previewing else {
             super.keyDown(with: event)
             return
         }
-        let node = Int(box.node)
-        let deleteKeys: Set<UInt16> = [51, 117]   // delete, forward delete
-        if deleteKeys.contains(event.keyCode) {
-            tooltip.hide()
-            onDelete?(node)
-            return
+        // Ours either way, so never hand it back: an unhandled key rings the
+        // bell, and a bell for "the pointer is not over anything" is noise.
+        guard let box = targetBox(), !box.isAggregate else { return }
+        tooltip.hide()
+        if deleting {
+            onDelete?(Int(box.node))
+        } else {
+            onPreview?(Int(box.node), CGPoint(x: box.rect.midX, y: box.rect.midY))
         }
-        // Command-Q is the Quit menu item's key equivalent, dispatched before
-        // this, so a bare "q" cannot be mistaken for it.  Space is here because
-        // it is what the Finder uses.
-        let typed = event.charactersIgnoringModifiers?.lowercased()
-        if !event.modifierFlags.contains(.command), typed == "q" || typed == " " {
-            tooltip.hide()
-            onPreview?(node, CGPoint(x: box.rect.midX, y: box.rect.midY))
-            return
-        }
-        super.keyDown(with: event)
+    }
+
+    /// What a key command should act on: the box under the pointer.
+    ///
+    /// Not simply `hovered`.  Quick Look takes the key window, which fires
+    /// `mouseExited` and clears the hover; when the panel closes the pointer
+    /// has not *moved*, so no `mouseMoved` arrives to set it again, and the
+    /// next Delete would find no target and ring the bell.  Asking where the
+    /// pointer actually is has no such gap.
+    private func targetBox() -> TreemapBox? {
+        if let hovered { return hovered }
+        guard let window else { return nil }
+        let inWindow = window.convertPoint(fromScreen: NSEvent.mouseLocation)
+        let local = convert(inWindow, from: nil)
+        guard bounds.contains(local) else { return nil }
+        layoutIfNeeded()
+        guard let box = map.hitTestBox(local) else { return nil }
+        // Light it up and name it in the status bar, so what the key is about
+        // to act on is visible before it acts.
+        hovered = box
+        setNeedsDisplay(box.rect.insetBy(dx: -3, dy: -3))
+        onHover?(box)
+        return box
     }
 }
 
