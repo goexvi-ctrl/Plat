@@ -271,11 +271,30 @@ checkbox that turns it off is not offered from inside a risky dialog.
 
 ## Tooltips
 
-Hover over a box and its name appears.  Just the name -- the status bar along
-the bottom already carries the full path and the size, and a tooltip that
-repeats them covers the map with something you have to read twice.  For a box
-too small to fit its label, which is most of them on a full disk, this is the
-only thing that says what it is.
+Hover over a box and its name appears after the usual delay.  Just the name --
+the status bar along the bottom already carries the full path and the size, and
+a tooltip that repeats them covers the map with something you have to read
+twice.  For a box too small to fit its label, which is most of them on a full
+disk, this is the only thing that says what it is.
+
+While the tooltip is up it follows the pointer, and it changes the moment the
+pointer crosses into another box, with no second wait.
+
+## Looking at a file
+
+Press **Q**, or **Space**, over a box to Quick Look it -- the same preview the
+Finder gives, in the same system panel.  A capacity block has no file to
+preview, and neither does a name whose file has since been deleted; those show
+the details popover instead.
+
+The details popover reports what the file actually contains, from `file(1)`:
+
+    Kind      PNG image
+    Contents  PNG image data, 1024 x 1024, 8-bit/color RGBA, non-interlaced
+
+An extension is a claim and magic numbers are evidence, so the two disagree when
+a file has the wrong name -- **Kind** comes from the extension, **Contents** from
+the first bytes on disk.
 
 ## Dragging things out
 

@@ -38,6 +38,9 @@ struct InfoPanel: View {
     private var smallSize: CGFloat { CGFloat(baseFontSize - 3) }
 
     @State private var copied: String?
+    /// What file(1) makes of the contents.  Fetched when the panel opens, since
+    /// it runs a process, and left out entirely when it says nothing useful.
+    @State private var contents: String?
 
     private var entry: FileTree.Node { tree.nodes[node] }
     /// This name is being charged only a share of the file's blocks.
@@ -61,6 +64,22 @@ struct InfoPanel: View {
         }
         .padding(20)
         .frame(width: 420)
+        .task(id: node) { await loadContents() }
+    }
+
+    /// `file` reads the head of the file, which is quick on a local disk and
+    /// arbitrarily slow on a stalled network mount -- so never on the main
+    /// thread, and never for a capacity block or a file that has gone.
+    private func loadContents() async {
+        contents = nil
+        guard !entry.isSynthetic, !tree.isGone(node), !entry.isDirectory else { return }
+        let target = path
+        let described = await Task.detached(priority: .userInitiated) {
+            FileDescription.of(path: target)
+        }.value
+        // The panel may have moved on to another box while that ran.
+        guard target == path else { return }
+        contents = described
     }
 
     // MARK: Header
@@ -155,6 +174,9 @@ struct InfoPanel: View {
             }
             row("Bytes", tree.size(of: node).formatted(.number.grouping(.automatic)))
             row("Kind", kind)
+            if let contents {
+                row("Contents", contents)
+            }
             if let package = tree.packageKind(of: node) {
                 row("Shown as", "one item \u{2014} macOS treats this "
                     + "\(package.noun) as a single file",

@@ -2,7 +2,7 @@ import AppKit
 import PlatCore
 import SwiftUI
 
-final class TreemapNSView: NSView, NSDraggingSource, NSViewToolTipOwner {
+final class TreemapNSView: NSView, NSDraggingSource {
 
     var tree: FileTree = .empty { didSet { invalidate() } }
     var rootNode: Int = 0 { didSet { invalidate() } }
@@ -17,6 +17,7 @@ final class TreemapNSView: NSView, NSDraggingSource, NSViewToolTipOwner {
     var onInspect: ((Int, CGPoint) -> Void)?
     var onGoUp: (() -> Void)?
     var onDelete: ((Int) -> Void)?
+    var onPreview: ((Int, CGPoint) -> Void)?
     var onHover: ((TreemapBox?) -> Void)?
     /// Whether this item may be moved out of Plat, as opposed to only copied.
     var allowsMove: ((Int) -> Bool)?
@@ -31,6 +32,7 @@ final class TreemapNSView: NSView, NSDraggingSource, NSViewToolTipOwner {
     private var hovered: TreemapBox?
     private var tracking: NSTrackingArea?
     private var renderer = TreemapRenderer()
+    private let tooltip = MapTooltip()
     private var themeAppearance: NSAppearance.Name?
     private var themeDirty = true
     /// Where the mouse went down, and on what, so a drag can be told from a
@@ -107,7 +109,16 @@ final class TreemapNSView: NSView, NSDraggingSource, NSViewToolTipOwner {
     /// popover opens, and those take it back for as long as they are up.
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        window?.makeFirstResponder(self)
+        tooltip.hide()
+        guard let window else { return }
+        window.makeFirstResponder(self)
+        // Tracking is .activeInKeyWindow, so a window losing key stops sending
+        // mouseMoved -- and would strand a tooltip on screen.
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.didResignKeyNotification, object: window, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.tooltip.hide() }
+        }
     }
 
     override func updateTrackingAreas() {
@@ -118,23 +129,13 @@ final class TreemapNSView: NSView, NSDraggingSource, NSViewToolTipOwner {
                                   owner: self)
         addTrackingArea(area)
         tracking = area
-
-        // One tooltip rect covering the whole view, answered on demand from the
-        // cached layout.  The 2004 build tried to call addToolTipRect once per
-        // box; that code never worked and was left #if 0'd out in draw.m, and
-        // it could not have scaled anyway -- a scan draws thousands of boxes and
-        // they are all replaced whenever the window is resized.
-        removeAllToolTips()
-        addToolTip(bounds, owner: self, userData: nil)
     }
 
     /// Just the name.  The status bar already carries the full path, and a
     /// tooltip that repeats it covers the map with something the eye has to
-    /// parse; the name is what a box that is too small to label is missing.
-    func view(_ view: NSView, stringForToolTip tag: NSView.ToolTipTag,
-              point: NSPoint, userData: UnsafeMutableRawPointer?) -> String {
-        layoutIfNeeded()
-        guard let box = map.hitTestBox(point) else { return "" }
+    /// parse; the name is what a box too small to label is missing.
+    private func tooltipText(for box: TreemapBox?) -> String? {
+        guard let box else { return nil }
         if box.isAggregate {
             return "\(ByteFormat.count(Int(box.aggregatedCount))) smaller items"
         }
@@ -148,6 +149,11 @@ final class TreemapNSView: NSView, NSDraggingSource, NSViewToolTipOwner {
     override func mouseMoved(with event: NSEvent) {
         layoutIfNeeded()
         let hit = map.hitTestBox(point(from: event))
+        // Feed the tooltip on every move, not only when the box changes: while
+        // it is up it follows the pointer.
+        if let screen = window?.convertPoint(toScreen: event.locationInWindow) {
+            tooltip.track(tooltipText(for: hit), at: screen)
+        }
         guard hit?.node != hovered?.node || hit?.rect != hovered?.rect else { return }
         // Repaint only the two boxes whose highlight changed.
         for r in [hovered?.rect, hit?.rect].compactMap({ $0 }) {
@@ -158,6 +164,7 @@ final class TreemapNSView: NSView, NSDraggingSource, NSViewToolTipOwner {
     }
 
     override func mouseExited(with event: NSEvent) {
+        tooltip.hide()
         if let r = hovered?.rect { setNeedsDisplay(r.insetBy(dx: -3, dy: -3)) }
         hovered = nil
         onHover?(nil)
@@ -167,6 +174,7 @@ final class TreemapNSView: NSView, NSDraggingSource, NSViewToolTipOwner {
     /// into it.  Either way hit testing walks the cached layout -- the original
     /// re-ran the whole treemap computation on every click just to find the box.
     override func mouseDown(with event: NSEvent) {
+        tooltip.hide()
         layoutIfNeeded()
         let p = point(from: event)
         pressPoint = p
@@ -200,6 +208,7 @@ final class TreemapNSView: NSView, NSDraggingSource, NSViewToolTipOwner {
     // MARK: Dragging out
 
     private func beginDrag(node: Int, at origin: CGPoint, event: NSEvent) {
+        tooltip.hide()
         let entry = tree.nodes[node]
         // A capacity block is not a file, and a deleted one is not there.
         guard !entry.isSynthetic, !tree.isGone(node) else { return }
@@ -230,12 +239,27 @@ final class TreemapNSView: NSView, NSDraggingSource, NSViewToolTipOwner {
     /// looking at.  Nothing happens without a target, and the model still puts
     /// a confirmation in the way.
     override func keyDown(with event: NSEvent) {
-        let deleteKeys: Set<UInt16> = [51, 117]   // delete, forward delete
-        guard deleteKeys.contains(event.keyCode), let node = hovered?.node else {
+        guard let box = hovered, !box.isAggregate else {
             super.keyDown(with: event)
             return
         }
-        onDelete?(Int(node))
+        let node = Int(box.node)
+        let deleteKeys: Set<UInt16> = [51, 117]   // delete, forward delete
+        if deleteKeys.contains(event.keyCode) {
+            tooltip.hide()
+            onDelete?(node)
+            return
+        }
+        // Command-Q is the Quit menu item's key equivalent, dispatched before
+        // this, so a bare "q" cannot be mistaken for it.  Space is here because
+        // it is what the Finder uses.
+        let typed = event.charactersIgnoringModifiers?.lowercased()
+        if !event.modifierFlags.contains(.command), typed == "q" || typed == " " {
+            tooltip.hide()
+            onPreview?(node, CGPoint(x: box.rect.midX, y: box.rect.midY))
+            return
+        }
+        super.keyDown(with: event)
     }
 }
 
@@ -274,6 +298,7 @@ struct TreemapView: NSViewRepresentable {
     var onGoUp: () -> Void
     var onHover: (TreemapBox?) -> Void
     var onDelete: (Int) -> Void
+    var onPreview: (Int, CGPoint) -> Void
     var allowsMove: (Int) -> Bool
     var onDragEnded: (Int, Bool) -> Void
 
@@ -307,6 +332,7 @@ struct TreemapView: NSViewRepresentable {
         v.onGoUp = onGoUp
         v.onHover = onHover
         v.onDelete = onDelete
+        v.onPreview = onPreview
         v.allowsMove = allowsMove
         v.onDragEnded = onDragEnded
     }
