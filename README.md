@@ -208,6 +208,15 @@ and all.  It is there because some people liked it.
 * **Symbolic links** are not followed and contribute nothing, so nothing is
   counted twice and no link loop can trap the scan.
 * **Other volumes** are skipped.  A scan stays on the disk it started on.
+* **Firmlink duplicates** are counted once.  macOS presents the System and Data
+  volumes of a volume group as one filesystem sharing a single device id, and
+  connects them with firmlinks, so `/Users` and `/System/Volumes/Data/Users`
+  are the same directory reached two ways.  A scan of `/` would meet the whole
+  Data volume twice; Plat keeps the familiar path and drops the duplicate,
+  using the system's own table at `/usr/share/firmlinks`.  `/System/Volumes/Data`
+  itself is still scanned, because plenty there -- `.Spotlight-V100`,
+  `.DocumentRevisions-V100`, `MobileSoftwareUpdate` -- has no firmlink pointing
+  at it.
 * **Sockets, pipes and devices** are skipped; they occupy no meaningful space.
 * **Folders themselves** are measured only by what they contain.  The few
   blocks a directory's own entries occupy are not counted, so a total can sit a

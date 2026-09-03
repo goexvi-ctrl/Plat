@@ -79,6 +79,9 @@ public enum FileScanner {
         }
 
         let state = ScanState(rootDevice: options.stayOnOneDevice ? rootDev : nil,
+                              // The device check cannot see a firmlink: the two
+                              // volumes share one dev_t.  This does.
+                              firmlinks: FirmlinkShadow(root: normalized),
                               options: options,
                               isCancelled: isCancelled,
                               progress: progress)
@@ -181,6 +184,7 @@ final class ScanState: @unchecked Sendable {
     private let condition = NSCondition()
     let options: ScanOptions
     let rootDevice: dev_t?
+    let firmlinks: FirmlinkShadow
     let isCancelled: @Sendable () -> Bool
     let progress: (@Sendable (ScanStats) -> Void)?
 
@@ -194,10 +198,11 @@ final class ScanState: @unchecked Sendable {
     private var stopped = false
     private var lastReport = Date.distantPast
 
-    init(rootDevice: dev_t?, options: ScanOptions,
+    init(rootDevice: dev_t?, firmlinks: FirmlinkShadow, options: ScanOptions,
          isCancelled: @escaping @Sendable () -> Bool,
          progress: (@Sendable (ScanStats) -> Void)?) {
         self.rootDevice = rootDevice
+        self.firmlinks = firmlinks
         self.options = options
         self.isCancelled = isCancelled
         self.progress = progress
@@ -440,6 +445,13 @@ final class ScanState: @unchecked Sendable {
                 childPath.append(CChar(bitPattern: namePointer[i]))
             }
             childPath.append(0)
+            // A firmlink duplicate: the same directory under its familiar
+            // name has already been queued, so counting it here would double
+            // everything beneath it.
+            if firmlinks.shadows(childPath) {
+                batch.nameBytes.removeLast(nameLength)
+                return
+            }
             batch.subdirectoryPaths.append(childPath)
             batch.directories += 1
             batch.entries.append((nameOffset, UInt32(nameLength), 0, 0, 0, 0, true))
