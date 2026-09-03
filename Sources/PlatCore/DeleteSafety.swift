@@ -189,7 +189,7 @@ public enum DeleteSafety {
             a.risk = .danger
             a.summary = "Stored in the cloud, not on this Mac"
             a.notes = ["The contents have been evicted to iCloud, so deleting "
-                       + "frees no space here -- but it does remove the file "
+                       + "frees no space here \u{2014} but it does remove the file "
                        + "from every device signed in to your account."]
             a.freesNothing = true
             return a
@@ -219,7 +219,7 @@ public enum DeleteSafety {
                 a.summary = "Inside \(enclosing)"
                 a.notes = ["This file is part of an application bundle. Removing "
                            + "any piece of one invalidates its code signature, "
-                           + "and macOS will usually then refuse to launch it -- "
+                           + "and macOS will usually then refuse to launch it \u{2014} "
                            + "with an error that does not mention the missing "
                            + "file. Delete the whole \(enclosing) instead."]
                 return

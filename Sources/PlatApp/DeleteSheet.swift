@@ -1,146 +1,179 @@
+import AppKit
 import PlatCore
 import SwiftUI
 
 /// The confirmation shown before anything is moved to the Trash.
 ///
-/// It exists to answer one question -- "will I regret this?" -- so the risk
-/// verdict, not the file name, is the largest thing on it.  A plain "are you
-/// sure?" teaches the user to click through without reading; a sheet that says
-/// *why* an item is dangerous, and stays quiet about the ones that are not, is
-/// worth reading.
+/// One key decides: **Y** deletes, anything else closes the box.  Nothing is
+/// bound to Return, so no reflex keystroke can destroy anything -- the only way
+/// through is a letter nobody presses by accident.
+///
+/// The box stays small when the delete is ordinary.  A confirmation that always
+/// prints five paragraphs teaches people to dismiss it unread, which costs more
+/// than it saves; the risk assessment only takes up room when it has something
+/// to say.
 struct DeleteSheet: View {
     let request: ScanModel.DeleteRequest
     var baseFontSize: Double = AppearanceSettings.defaultUIFontSize
-    @Binding var askEveryTime: Bool
     var onCancel: () -> Void
     var onConfirm: () -> Void
 
+    /// Held for as long as the sheet is up.  A local monitor rather than
+    /// `.onKeyPress`, because it does not depend on which control inside the
+    /// sheet happens to hold focus -- and in a dialog whose whole contract is
+    /// "one key decides", a key reaching the wrong view is the one failure that
+    /// must not happen.
+    @State private var keys: Any?
+
     private var risk: DeleteRisk { request.assessment.risk }
     private var blocked: Bool { risk == .blocked }
+    /// Reasons are worth the space only when something is actually at stake.
+    private var showsReasons: Bool { risk >= .caution && !request.assessment.notes.isEmpty }
 
-    private var titleSize: CGFloat { CGFloat(baseFontSize + 2) }
+    private var titleSize: CGFloat { CGFloat(baseFontSize + 1) }
     private var bodySize: CGFloat { CGFloat(baseFontSize - 1) }
     private var smallSize: CGFloat { CGFloat(baseFontSize - 3) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            banner
-            VStack(alignment: .leading, spacing: 14) {
-                Text(title)
-                    .font(.system(size: titleSize, weight: .semibold))
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Text(request.path)
-                    .font(.system(size: smallSize))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .truncationMode(.middle)
-                    .textSelection(.enabled)
-
-                if !request.assessment.notes.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        ForEach(Array(request.assessment.notes.enumerated()), id: \.offset) { _, note in
-                            HStack(alignment: .top, spacing: 8) {
-                                Text("\u{2022}")
-                                Text(note).fixedSize(horizontal: false, vertical: true)
-                            }
-                            .font(.system(size: bodySize))
-                            .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-
-                if !blocked { Divider(); sizeLine }
-            }
-            .padding(20)
-
+        VStack(alignment: .leading, spacing: 14) {
+            header
+            if showsReasons { reasons }
+            if !blocked { sizeLine }
             Divider()
-            buttons
+            footer
         }
-        .frame(width: 460)
+        .padding(20)
+        .frame(width: 440)
+        .onAppear(perform: watchKeys)
+        .onDisappear(perform: releaseKeys)
     }
 
     // MARK: Pieces
 
-    /// A coloured strip naming the verdict, so the level registers before any
-    /// of the prose is read.
-    private var banner: some View {
-        HStack(spacing: 10) {
+    private var header: some View {
+        HStack(alignment: .top, spacing: 12) {
             Image(systemName: symbol)
-                .font(.system(size: titleSize + 3, weight: .medium))
-            VStack(alignment: .leading, spacing: 1) {
-                Text(risk.label)
-                    .font(.system(size: bodySize, weight: .semibold))
-                Text(request.assessment.summary)
+                .font(.system(size: titleSize + 12, weight: .regular))
+                .foregroundStyle(tint)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.system(size: titleSize, weight: .semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(subtitle)
                     .font(.system(size: smallSize))
-                    .opacity(0.85)
+                    .foregroundStyle(risk >= .caution ? AnyShapeStyle(tint)
+                                                      : AnyShapeStyle(.secondary))
+                    .lineLimit(2)
+                    .truncationMode(.middle)
             }
-            Spacer()
+            Spacer(minLength: 0)
         }
-        .foregroundStyle(tint)
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(tint.opacity(0.12))
+    }
+
+    private var reasons: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            ForEach(Array(request.assessment.notes.enumerated()), id: \.offset) { _, note in
+                HStack(alignment: .top, spacing: 7) {
+                    Text("\u{2022}")
+                    Text(note).fixedSize(horizontal: false, vertical: true)
+                }
+                .font(.system(size: bodySize))
+                .foregroundStyle(.secondary)
+            }
+        }
     }
 
     private var sizeLine: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 3) {
             if request.assessment.freesNothing {
-                Label("Recovers no space", systemImage: "equal.circle")
+                Text("Recovers no space")
                     .font(.system(size: bodySize, weight: .semibold))
                     .foregroundStyle(.orange)
             } else {
-                Label("Recovers \(ByteFormat.string(request.assessment.reclaims))",
-                      systemImage: "internaldrive")
+                Text("Recovers \(ByteFormat.string(request.assessment.reclaims))"
+                     + (request.isDirectory
+                        ? ", with \(ByteFormat.count(request.files)) files and "
+                          + "\(ByteFormat.count(request.folders)) folders"
+                        : ""))
                     .font(.system(size: bodySize, weight: .semibold))
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            if request.isDirectory {
-                Text("\(ByteFormat.count(request.files)) files and "
-                     + "\(ByteFormat.count(request.folders)) folders go with it.")
-                    .font(.system(size: smallSize))
-                    .foregroundStyle(.secondary)
-            }
-            Text("It goes to the Trash. Edit \u{203A} Undo puts it back, and it "
-                 + "stays recoverable by hand until the Trash is emptied.")
+            Text("It goes to the Trash; Edit \u{203A} Undo puts it back.")
                 .font(.system(size: smallSize))
                 .foregroundStyle(.tertiary)
-                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    private var buttons: some View {
-        HStack(spacing: 12) {
-            // Offered only for the unremarkable cases: a destructive dialog is
-            // no place to switch off destructive dialogs.
-            if !blocked && risk <= .normal {
-                Toggle("Ask every time", isOn: $askEveryTime)
-                    .toggleStyle(.checkbox)
-                    .font(.system(size: smallSize))
-            }
-            Spacer()
+    /// The instruction is the point of the box, so it is the last thing read
+    /// and it sits beside the buttons rather than buried above them.
+    private var footer: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // On its own line rather than squeezed beside the buttons: it is
+            // the sentence the box exists to deliver, and it must not wrap.
+            Text(instruction)
+                .font(.system(size: bodySize, weight: .medium))
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 12) {
+            Spacer(minLength: 8)
             if blocked {
-                Button("OK", action: onCancel)
-                    .keyboardShortcut(.defaultAction)
+                Button("Close", action: onCancel)
             } else {
                 Button("Cancel", action: onCancel)
-                    .keyboardShortcut(.cancelAction)
-                Button("Move to Trash", action: onConfirm)
-                    // Return confirms an ordinary delete but not a risky one:
-                    // for those, nothing is bound, so a stray Return cancels
-                    // instead of doing the damage.
-                    .keyboardShortcut(risk >= .danger ? nil : .defaultAction)
+                Button("Delete", action: onConfirm)
                     .buttonStyle(.borderedProminent)
                     .tint(risk >= .caution ? .red : .accentColor)
             }
+            }
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 14)
+        // Deliberately no default action anywhere: Y is the only key that
+        // deletes, and Return closes the box like everything else.
+        .buttonStyle(.automatic)
     }
 
+    // MARK: One key decides
+
+    private func watchKeys() {
+        releaseKeys()
+        keys = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            // Command shortcuts are the system's, not this dialog's -- and one
+            // of them opens Settings, whose window must keep its own
+            // keystrokes.  Only what is typed into the sheet is ours.
+            guard !event.modifierFlags.contains(.command),
+                  event.window?.isSheet == true else { return event }
+            MainActor.assumeIsolated {
+                let typed = event.charactersIgnoringModifiers?.lowercased()
+                if typed == "y" && !blocked { onConfirm() } else { onCancel() }
+            }
+            return nil          // nothing else in the sheet sees this key
+        }
+    }
+
+    private func releaseKeys() {
+        if let keys { NSEvent.removeMonitor(keys) }
+        keys = nil
+    }
+
+    // MARK: Words
+
     private var title: String {
-        if blocked { return "\u{201C}\(request.name)\u{201D} cannot be deleted" }
-        return "Move \u{201C}\(request.name)\u{201D} to the Trash?"
+        blocked ? "\u{201C}\(request.name)\u{201D} cannot be deleted"
+                : "Move \u{201C}\(request.name)\u{201D} to the Trash?"
+    }
+
+    /// The path when there is nothing to warn about, and the warning when there
+    /// is: one line either way.  The blocked title already says it cannot be
+    /// deleted, so that line gives only the reason.
+    private var subtitle: String {
+        switch risk {
+        case .normal:  return request.path
+        case .blocked: return request.assessment.summary
+        default:       return "\(risk.label) \u{2014} \(request.assessment.summary)"
+        }
+    }
+
+    private var instruction: String {
+        blocked ? "Press any key to close."
+                : "Press \u{201C}Y\u{201D} to delete, anything else to cancel."
     }
 
     private var symbol: String {

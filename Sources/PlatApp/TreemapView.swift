@@ -175,6 +175,9 @@ final class TreemapNSView: NSView, NSDraggingSource {
     /// re-ran the whole treemap computation on every click just to find the box.
     override func mouseDown(with event: NSEvent) {
         tooltip.hide()
+        // Take the keyboard back: a sheet or popover may have had it, and
+        // Delete and Q are aimed at whatever the pointer is over.
+        if window?.firstResponder !== self { window?.makeFirstResponder(self) }
         layoutIfNeeded()
         let p = point(from: event)
         pressPoint = p

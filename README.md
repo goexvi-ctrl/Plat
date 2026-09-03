@@ -265,9 +265,23 @@ Some of the reasoning is worth knowing about:
   back on the others.  Files whose contents have been evicted to iCloud free no
   space here at all.
 
+### Answering it
+
+**Y** deletes.  Any other key closes the box.
+
+Nothing is bound to Return, on purpose: the box is often the thing standing
+between a stray keystroke and a folder, and a dialog where the reflex answer is
+also the destructive one is not much of a dialog.  Y is a letter nobody presses
+by accident, and every other key -- Return, Escape, space, a wrong guess -- is a
+cancel.  The buttons work too, for a hand already on the mouse.
+
+The box stays short when the delete is ordinary: the name, what it recovers, and
+the instruction.  Reasons only appear when there is something to be careful
+about, because a confirmation that always prints five paragraphs teaches people
+to dismiss it unread.
+
 Plat asks before every delete.  Turning that off in **Settings > General** skips
-the question for ordinary files only; anything risky still asks, and the
-checkbox that turns it off is not offered from inside a risky dialog.
+the question for ordinary files only; anything risky still asks.
 
 ## Tooltips
 

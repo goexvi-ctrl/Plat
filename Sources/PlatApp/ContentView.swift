@@ -28,7 +28,6 @@ struct ContentView: View {
         .sheet(item: $model.pendingDelete) { request in
             DeleteSheet(request: request,
                         baseFontSize: prefs.appearance.uiFontSize,
-                        askEveryTime: $model.confirmBeforeDelete,
                         onCancel: { model.cancelDelete() },
                         onConfirm: { model.confirmDelete() })
         }
