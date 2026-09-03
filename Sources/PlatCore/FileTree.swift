@@ -401,6 +401,52 @@ public struct FileTree: Sendable {
         stats.totalBytes += logical
     }
 
+    /// Re-read the volume's real figures and rebuild the two capacity blocks
+    /// around whatever the tree now holds.
+    ///
+    /// `remove` credits the free block with exactly what it subtracted, which
+    /// keeps the root invariant but only *infers* the gain.  After a move it
+    /// would be wrong outright: a file dragged to another folder on the same
+    /// volume frees nothing, and the drop target never tells us where it went.
+    /// So after any change made on disk, ask the filesystem instead of
+    /// reasoning about it.  Whatever does not add up lands in "Not scanned",
+    /// which is exactly what that block means -- and it is what quietly
+    /// corrects a hard-linked delete, where the blocks do not come back at all.
+    @discardableResult
+    public mutating func refreshVolumeAccounting() -> Bool {
+        guard let freeIdx = freeSpaceIndex, volume != nil,
+              let fresh = VolumeInfo.of(path: rootPath) else { return false }
+        let notScanned = 1
+
+        // Peel the two blocks off the root to recover the totals for the files
+        // that were actually walked.
+        var scannedAllocated = nodes[0].allocatedSize
+        var scannedShared = nodes[0].allocatedShared
+        var scannedLogical = nodes[0].logicalSize
+        for i in [notScanned, freeIdx] {
+            scannedAllocated -= nodes[i].allocatedSize
+            scannedShared -= nodes[i].allocatedShared
+            scannedLogical -= nodes[i].logicalSize
+        }
+
+        // As in FileScanner.fill(capacity:): compare against the hard-link-split
+        // total, because the volume counts shared blocks once.
+        let unaccounted = max(0, fresh.usedBytes - scannedShared)
+        for (i, size) in [(notScanned, unaccounted), (freeIdx, fresh.freeBytes)] {
+            nodes[i].allocatedSize = size
+            nodes[i].allocatedShared = size
+            nodes[i].logicalSize = size
+        }
+        let blocks = unaccounted + fresh.freeBytes
+        nodes[0].allocatedSize = scannedAllocated + blocks
+        nodes[0].allocatedShared = scannedShared + blocks
+        nodes[0].logicalSize = scannedLogical + blocks
+
+        volume = fresh
+        revision += 1
+        return true
+    }
+
     /// Index of the free-space block, when the scan covered a whole volume.
     public var freeSpaceIndex: Int? {
         synthetic(2) == .freeSpace ? 2 : nil

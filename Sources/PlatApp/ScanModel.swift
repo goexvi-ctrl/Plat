@@ -323,11 +323,53 @@ final class ScanModel {
             lastDelete = CompletedDelete(removal: removal,
                                          name: request.name,
                                          trashURL: trashed)
+            // The free block was credited by inference; correct it against what
+            // the volume really reports.  This is what makes a hard-linked
+            // delete honest -- the blocks do not come back, and the difference
+            // lands in "Not scanned" where it belongs.
+            tree.refreshVolumeAccounting()
             retreatFromDeleted()
         } catch {
             deleteError = "Could not move \(request.name) to the Trash.\n"
                         + error.localizedDescription
         }
+    }
+
+    // MARK: Dragging out
+
+    /// Whether an item may be dragged out of Plat as a move rather than only a
+    /// copy.
+    ///
+    /// A drag offers nowhere to put a warning: by the time the drop lands the
+    /// file has already gone.  So the same assessment that gates a delete gates
+    /// this, and anything it calls risky is offered for copying only -- which
+    /// the drag badge shows plainly.  Dragging one file out of an application
+    /// bundle breaks the application just as surely as deleting it would.
+    func allowsMove(_ node: Int) -> Bool {
+        guard isReady, node > 0, node < tree.nodes.count else { return false }
+        let entry = tree.nodes[node]
+        guard !entry.isSynthetic, !tree.isGone(node) else { return false }
+        return assessment(for: node).risk < .danger
+    }
+
+    /// A drag has finished.  Whether it was a move is decided by looking at the
+    /// disk, not by the operation the drop target reported: a target may move a
+    /// file without saying so, and the only question that matters is whether
+    /// the file is still where the scan left it.
+    func noteDragEnded(node: Int) {
+        guard isReady, node > 0, node < tree.nodes.count, !tree.isGone(node) else { return }
+        let path = tree.path(of: node)
+        guard !FileManager.default.fileExists(atPath: path) else { return }
+
+        tree.remove(node)
+        // A move to another folder on the same volume frees nothing, and Plat
+        // is never told where the file went -- so ask the filesystem what
+        // actually changed rather than crediting the free block by hand.
+        tree.refreshVolumeAccounting()
+        retreatFromDeleted()
+        // Not offered for undo: Plat does not know where the file was put, so
+        // it has nothing to put back.
+        lastDelete = nil
     }
 
     var canUndoDelete: Bool { lastDelete?.trashURL != nil }
@@ -342,6 +384,7 @@ final class ScanModel {
         do {
             try Trash.putBack(from: trashed, to: URL(fileURLWithPath: last.removal.path))
             tree.restore(last.removal)
+            tree.refreshVolumeAccounting()
             lastDelete = nil
         } catch {
             deleteError = "Could not put \(last.name) back.\n"

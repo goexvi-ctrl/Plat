@@ -93,7 +93,9 @@ struct ContentView: View {
                             },
                             onGoUp: { model.goUp(); inspection = nil },
                             onHover: { hover = $0 },
-                            onDelete: { requestDelete($0) })
+                            onDelete: { requestDelete($0) },
+                            allowsMove: { model.allowsMove($0) },
+                            onDragEnded: { model.noteDragEnded(node: $0) })
 
                 // A small invisible anchor sitting where the click landed, so
                 // the popover's arrow points at the box the user hit.  The
@@ -249,7 +251,8 @@ struct ContentView: View {
                 }
             } else if case .ready = model.phase {
                 Text("Click for details \u{2022} double-click to zoom in \u{2022} "
-                     + "right-click to go back \u{2022} Delete to trash")
+                     + "right-click to go back \u{2022} Delete to trash \u{2022} "
+                     + "drag a box out to copy or move it")
                     .foregroundStyle(.tertiary)
             }
             Spacer()

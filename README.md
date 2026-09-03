@@ -269,6 +269,40 @@ Plat asks before every delete.  Turning that off in **Settings > General** skips
 the question for ordinary files only; anything risky still asks, and the
 checkbox that turns it off is not offered from inside a risky dialog.
 
+## Tooltips
+
+Hover over a box and its name appears.  Just the name -- the status bar along
+the bottom already carries the full path and the size, and a tooltip that
+repeats them covers the map with something you have to read twice.  For a box
+too small to fit its label, which is most of them on a full disk, this is the
+only thing that says what it is.
+
+## Dragging things out
+
+Drag a box out of Plat and it behaves like a file, because it is one.  Drop it on
+a Finder window, into a mail message, onto a terminal, anywhere that takes a
+file.  The drag carries a real file URL and the file's own icon.
+
+* **Dropping on the Finder** copies or moves it, following the usual rules and
+  the usual modifier keys.
+* **Dropping on the Trash** deletes it, and Plat notices.
+* **Anything Plat can call risky** -- a file inside an application bundle, a
+  startup item, iCloud Drive -- is offered for **copying only**.  A drag has
+  nowhere to put a warning, so the protection has to be in what is offered; the
+  Finder shows a copy badge rather than a move one.  Deleting has a confirmation
+  it can stop you at, and dragging does not.
+
+When a drag really does move a file, Plat looks at the disk rather than trusting
+what the drop target reported, then re-reads the volume's own figures.  A file
+moved to another folder on the same volume frees nothing at all, and Plat is
+never told where it went -- so the map shows the folder shrinking while free
+space stays exactly where it was, and the difference lands in **Not scanned**,
+which is what that block has always meant.
+
+Dropping a box on another box, to move a file inside the map, is not supported.
+The tree stores children as contiguous runs, so accepting one somewhere new
+means rebuilding it, and a move that cannot be undone is not worth that yet.
+
 ## Jumping to a folder by name
 
 **Shift-Cmd-G** opens a search field.  Type a folder name and the map goes

@@ -2,7 +2,7 @@ import AppKit
 import PlatCore
 import SwiftUI
 
-final class TreemapNSView: NSView {
+final class TreemapNSView: NSView, NSDraggingSource, NSViewToolTipOwner {
 
     var tree: FileTree = .empty { didSet { invalidate() } }
     var rootNode: Int = 0 { didSet { invalidate() } }
@@ -18,6 +18,10 @@ final class TreemapNSView: NSView {
     var onGoUp: (() -> Void)?
     var onDelete: ((Int) -> Void)?
     var onHover: ((TreemapBox?) -> Void)?
+    /// Whether this item may be moved out of Plat, as opposed to only copied.
+    var allowsMove: ((Int) -> Bool)?
+    /// A drag finished; the file may or may not still be where it was.
+    var onDragEnded: ((Int) -> Void)?
 
     private var map = Treemap.empty
     private var mapBounds: CGRect = .zero
@@ -27,6 +31,13 @@ final class TreemapNSView: NSView {
     private var renderer = TreemapRenderer()
     private var themeAppearance: NSAppearance.Name?
     private var themeDirty = true
+    /// Where the mouse went down, and on what, so a drag can be told from a
+    /// click without acting on either too early.
+    private var pressPoint: CGPoint?
+    private var pressNode: Int?
+    private var dragging = false
+    private var dragNode: Int?
+    private var dragMask: NSDragOperation = []
 
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
@@ -105,6 +116,27 @@ final class TreemapNSView: NSView {
                                   owner: self)
         addTrackingArea(area)
         tracking = area
+
+        // One tooltip rect covering the whole view, answered on demand from the
+        // cached layout.  The 2004 build tried to call addToolTipRect once per
+        // box; that code never worked and was left #if 0'd out in draw.m, and
+        // it could not have scaled anyway -- a scan draws thousands of boxes and
+        // they are all replaced whenever the window is resized.
+        removeAllToolTips()
+        addToolTip(bounds, owner: self, userData: nil)
+    }
+
+    /// Just the name.  The status bar already carries the full path, and a
+    /// tooltip that repeats it covers the map with something the eye has to
+    /// parse; the name is what a box that is too small to label is missing.
+    func view(_ view: NSView, stringForToolTip tag: NSView.ToolTipTag,
+              point: NSPoint, userData: UnsafeMutableRawPointer?) -> String {
+        layoutIfNeeded()
+        guard let box = map.hitTestBox(point) else { return "" }
+        if box.isAggregate {
+            return "\(ByteFormat.count(Int(box.aggregatedCount))) smaller items"
+        }
+        return tree.name(of: Int(box.node))
     }
 
     private func point(from event: NSEvent) -> CGPoint {
@@ -135,15 +167,62 @@ final class TreemapNSView: NSView {
     override func mouseDown(with event: NSEvent) {
         layoutIfNeeded()
         let p = point(from: event)
-        guard let node = map.hitTest(p) else { return }
+        pressPoint = p
+        pressNode = map.hitTest(p)
+        dragging = false
+    }
+
+    /// Past a few points of travel this is a drag, not a click.  Acting on
+    /// mouse-up rather than mouse-down is what makes room for that; it is also
+    /// the ordinary macOS behaviour for anything draggable.
+    override func mouseDragged(with event: NSEvent) {
+        guard !dragging, let start = pressPoint, let node = pressNode else { return }
+        let p = point(from: event)
+        guard hypot(p.x - start.x, p.y - start.y) > 4 else { return }
+        dragging = true
+        beginDrag(node: node, at: start, event: event)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        defer { pressPoint = nil; pressNode = nil }
+        guard !dragging, let node = pressNode else { return }
         if event.clickCount >= 2 {
             onOpen?(node)
         } else {
-            onInspect?(node, p)
+            onInspect?(node, point(from: event))
         }
     }
 
     override func rightMouseDown(with event: NSEvent) { onGoUp?() }
+
+    // MARK: Dragging out
+
+    private func beginDrag(node: Int, at origin: CGPoint, event: NSEvent) {
+        let entry = tree.nodes[node]
+        // A capacity block is not a file, and a deleted one is not there.
+        guard !entry.isSynthetic, !tree.isGone(node) else { return }
+        let path = tree.path(of: node)
+        guard FileManager.default.fileExists(atPath: path) else { return }
+        let url = URL(fileURLWithPath: path)
+
+        // Copy only unless the item is safe to move.  There is no moment in a
+        // drag at which Plat could put a warning, so the protection has to be
+        // in what it offers: dragging one file out of an application bundle
+        // breaks the bundle, and the drop target would do it without asking.
+        // Refusing the move makes the Finder show a copy badge instead.
+        dragMask = (allowsMove?(node) ?? false) ? [.copy, .move, .delete] : [.copy]
+        dragNode = node
+
+        let icon = NSWorkspace.shared.icon(forFile: path)
+        let side: CGFloat = 48
+        icon.size = NSSize(width: side, height: side)
+        let item = NSDraggingItem(pasteboardWriter: url as NSURL)
+        item.setDraggingFrame(NSRect(x: origin.x - side / 2, y: origin.y - side / 2,
+                                     width: side, height: side),
+                              contents: icon)
+        let session = beginDraggingSession(with: [item], event: event, source: self)
+        session.animatesToStartingPositionsOnCancelOrFail = true
+    }
 
     /// Delete acts on the box under the pointer, which is the one the user is
     /// looking at.  Nothing happens without a target, and the model still puts
@@ -158,6 +237,26 @@ final class TreemapNSView: NSView {
     }
 }
 
+extension TreemapNSView {
+
+    func draggingSession(_ session: NSDraggingSession,
+                         sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        // Dropping a box back onto the map would mean nothing, so only drags
+        // that leave Plat do anything at all.
+        context == .outsideApplication ? dragMask : []
+    }
+
+    func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint,
+                         operation: NSDragOperation) {
+        defer { dragging = false; dragNode = nil }
+        guard let node = dragNode else { return }
+        // Ask the disk rather than trusting `operation`: a drop target is free
+        // to move a file without reporting .move, and the answer that matters
+        // is simply whether the file is still there.
+        onDragEnded?(node)
+    }
+}
+
 struct TreemapView: NSViewRepresentable {
     var tree: FileTree
     var root: Int
@@ -169,6 +268,8 @@ struct TreemapView: NSViewRepresentable {
     var onGoUp: () -> Void
     var onHover: (TreemapBox?) -> Void
     var onDelete: (Int) -> Void
+    var allowsMove: (Int) -> Bool
+    var onDragEnded: (Int) -> Void
 
     func makeNSView(context: Context) -> TreemapNSView {
         let v = TreemapNSView()
@@ -200,5 +301,7 @@ struct TreemapView: NSViewRepresentable {
         v.onGoUp = onGoUp
         v.onHover = onHover
         v.onDelete = onDelete
+        v.allowsMove = allowsMove
+        v.onDragEnded = onDragEnded
     }
 }
