@@ -138,6 +138,30 @@ labels are never clipped -- but a taller strip means fewer boxes are large
 enough to subdivide, so the map gets coarser.  The panel's name and smaller
 text scale from the one figure size.
 
+## Scanning a whole volume
+
+Point Plat at a volume's mount point -- `/`, or anything under `/Volumes` --
+and the map represents the whole disk rather than just the files on it.  Two
+extra blocks appear beside the folders:
+
+* **Free space**, what you could still write.
+* **Not scanned**, space the volume reports as in use that the walk did not
+  see: other volumes sharing the same APFS container, snapshots, folders it was
+  not permitted to read, and purgeable space.
+
+Together with the files, those sum to exactly the volume's capacity, so the map
+answers "my disk is full but I can only find half of it in files" instead of
+leaving the gap invisible.
+
+"Not scanned" is deliberately one block.  macOS reports no size per snapshot --
+snapshot blocks are shared with live files, so there is no single number to
+report -- and splitting it further would mean inventing figures.  A large one
+usually means either many local snapshots (`tmutil listlocalsnapshots /`) or a
+scan that could not read much of the disk.
+
+Scanning a folder rather than a volume adds nothing; there is no capacity to
+report.
+
 ## What "size" means
 
 This is the part worth understanding, because the whole point of the program is

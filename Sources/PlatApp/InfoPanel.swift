@@ -44,7 +44,12 @@ struct InfoPanel: View {
             header
             Divider()
             details
-            if entry.isDirectory || !path.isEmpty { Divider(); actions }
+            // A capacity block is not a file: it has no path, so nothing to
+            // open, reveal or preview.
+            if !entry.isSynthetic, entry.isDirectory || !path.isEmpty {
+                Divider()
+                actions
+            }
         }
         .padding(20)
         .frame(width: 420)
@@ -70,6 +75,12 @@ struct InfoPanel: View {
                 }
             }
 
+            if entry.isSynthetic {
+                Text(syntheticExplanation)
+                    .font(.system(size: smallSize))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
             CopyButton(text: path, copied: $copied, label: "path") {
                 Text(path)
                     .font(.system(size: smallSize))
@@ -79,10 +90,29 @@ struct InfoPanel: View {
                     .multilineTextAlignment(.leading)
             }
 
+            }
+            if !entry.isSynthetic {
             Text(copied.map { "Copied \($0) to the clipboard" } ?? "Click the name or path to copy it")
                 .font(.system(size: smallSize))
                 .foregroundStyle(copied == nil ? AnyShapeStyle(.tertiary) : AnyShapeStyle(Color.accentColor))
                 .animation(.easeInOut(duration: 0.15), value: copied)
+            }
+        }
+    }
+
+    /// Capacity blocks need explaining; a folder does not.
+    private var syntheticExplanation: String {
+        switch tree.synthetic(node) {
+        case .freeSpace:
+            return "Unused space on this volume."
+        case .notScanned:
+            return "Space the volume reports as in use that this scan did not "
+                 + "see: other volumes sharing the same container, APFS "
+                 + "snapshots, folders it was not permitted to read, and "
+                 + "purgeable space.  macOS reports no size per snapshot, so "
+                 + "these cannot be separated."
+        case nil:
+            return ""
         }
     }
 

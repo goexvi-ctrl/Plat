@@ -19,6 +19,9 @@ public struct RenderTheme: Sendable {
     public var outline: CGColor
     public var label: CGColor
     public var highlight: CGColor
+    /// Capacity blocks: unused space, and space in use that the walk missed.
+    public var freeSpace: CGColor
+    public var notScanned: CGColor
     /// One colour per file kind, keyed by `FileKind.rawValue`.  A file takes
     /// its kind's colour unless its extension is pinned below.
     public var kinds: [String: CGColor]
@@ -29,7 +32,11 @@ public struct RenderTheme: Sendable {
 
     public init(background: CGColor, container: CGColor, collapsed: CGColor,
                 aggregate: CGColor, linkMark: CGColor, outline: CGColor,
-                label: CGColor, highlight: CGColor, kinds: [String: CGColor]) {
+                label: CGColor, highlight: CGColor,
+                freeSpace: CGColor, notScanned: CGColor,
+                kinds: [String: CGColor]) {
+        self.freeSpace = freeSpace
+        self.notScanned = notScanned
         self.linkMark = linkMark
         self.background = background
         self.container = container
@@ -50,6 +57,8 @@ public struct RenderTheme: Sendable {
         outline: CGColor(gray: 0, alpha: 0.28),
         label: CGColor(gray: 0.1, alpha: 1),
         highlight: CGColor(red: 0.0, green: 0.48, blue: 1.0, alpha: 1),
+        freeSpace: CGColor(red: 0.86, green: 0.89, blue: 0.92, alpha: 1),
+        notScanned: CGColor(red: 0.79, green: 0.75, blue: 0.68, alpha: 1),
 kinds: FileKind.allCases.reduce(into: [:]) { $0[$1.rawValue] = $1.defaultColor.cgColor })
 }
 
@@ -133,6 +142,10 @@ public struct TreemapRenderer {
                             names: UnsafeBufferPointer<UInt8>) -> CGColor {
         if box.isAggregate { return theme.aggregate }
         let node = tree.nodes[Int(box.node)]
+        if node.isSynthetic {
+            return tree.synthetic(Int(box.node)) == .freeSpace
+                ? theme.freeSpace : theme.notScanned
+        }
         if box.hasChildren { return theme.container }
         // A folder we chose not to open: show it as a solid block.
         if node.isDirectory { return node.childCount > 0 ? theme.collapsed : theme.container }

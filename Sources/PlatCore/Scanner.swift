@@ -25,13 +25,18 @@ public struct ScanOptions: Sendable {
     /// Bytes handed to `getattrlistbulk` per call.  Bigger means fewer syscalls
     /// and more entries decoded per trip into the kernel.
     public var bufferBytes: Int
+    /// When the scan covers a whole volume, add blocks for free space and for
+    /// space the scan could not account for, so the map sums to the volume.
+    public var includeVolumeCapacity: Bool
 
     public init(stayOnOneDevice: Bool = true,
                 workers: Int = ScanOptions.defaultWorkerCount,
-                bufferBytes: Int = 256 << 10) {
+                bufferBytes: Int = 256 << 10,
+                includeVolumeCapacity: Bool = true) {
         self.stayOnOneDevice = stayOnOneDevice
         self.workers = max(1, workers)
         self.bufferBytes = max(16 << 10, bufferBytes)
+        self.includeVolumeCapacity = includeVolumeCapacity
     }
 
     public static var defaultWorkerCount: Int {
@@ -94,6 +99,26 @@ public enum FileScanner {
         rootNode.nameLength = UInt16(min(rootName.count, Int(UInt16.max)))
         state.names = rootName
         state.nodes = [rootNode]
+
+        // Capacity blocks take the root's first child slots.  The scanner
+        // appends a directory's children contiguously, so reserving them here --
+        // rather than appending at the end -- keeps that invariant intact.
+        let volume = (options.includeVolumeCapacity && VolumeInfo.isMountPoint(normalized))
+            ? VolumeInfo.of(path: normalized) : nil
+        if volume != nil {
+            for name in [unaccountedName, freeSpaceName] {
+                let bytes = Array(name.utf8)
+                state.nodes.append(FileTree.Node(size: 0,
+                                                 nameOffset: UInt32(state.names.count),
+                                                 nameLength: UInt32(bytes.count),
+                                                 parent: 0, isSynthetic: true))
+                state.names.append(contentsOf: bytes)
+            }
+            state.nodes[0].childStart = 1
+            state.nodes[0].childCount = 2
+            state.reservedRootChildren = 2
+        }
+
         state.pending = [DirTask(node: 0, path: cString(normalized))]
         state.stats.directories = 1
 
@@ -107,11 +132,43 @@ public enum FileScanner {
                             rootPath: normalized,
                             stats: state.stats)
         tree.rollUpSizes()
+        if let volume { fill(capacity: volume, in: &tree) }
         tree.stats.totalBytes = tree.nodes[0].logicalSize
         tree.stats.allocatedBytes = tree.nodes[0].allocatedSize
         tree.stats.sharedBytes = tree.nodes[0].allocatedShared
         tree.stats.duration = Date().timeIntervalSince(started)
         return tree
+    }
+
+    static let unaccountedName = "Not scanned"
+    static let freeSpaceName = "Free space"
+
+    /// Give the reserved blocks their sizes, now that the walk is done.
+    ///
+    /// "Not scanned" is everything the volume reports as used that the walk did
+    /// not see: sibling volumes sharing the container, APFS snapshots, folders
+    /// that denied us, and purgeable space.  It is deliberately one block --
+    /// macOS reports no per-snapshot size, so splitting it further would mean
+    /// inventing numbers.
+    private static func fill(capacity volume: VolumeInfo, in tree: inout FileTree) {
+        guard tree.nodes.count > 2 else { return }
+        // Compare against the hard-link-split total, not the raw one: the
+        // volume reports blocks, and a file reachable under five names occupies
+        // its blocks once.  Using allocatedSize here would understate "not
+        // scanned" by however much the tree double-counts.
+        let scanned = tree.nodes[0].allocatedShared
+        let unaccounted = max(0, volume.usedBytes - scanned)
+
+        for (i, size) in [(1, unaccounted), (2, volume.freeBytes)] {
+            tree.nodes[i].allocatedSize = size
+            tree.nodes[i].allocatedShared = size
+            tree.nodes[i].logicalSize = size
+            // The root now stands for the whole volume, not just its files.
+            tree.nodes[0].allocatedSize += size
+            tree.nodes[0].allocatedShared += size
+            tree.nodes[0].logicalSize += size
+        }
+        tree.volume = volume
     }
 
     // MARK: - Path helpers
@@ -193,6 +250,8 @@ final class ScanState: @unchecked Sendable {
     var pending: [DirTask] = []
     var stats = ScanStats()
     var failure: Error?
+    /// Capacity blocks already occupying the root's first child slots.
+    var reservedRootChildren: Int32 = 0
 
     private var busy = 0
     private var stopped = false
@@ -285,9 +344,13 @@ final class ScanState: @unchecked Sendable {
         let nameBase = UInt32(names.count)
         names.append(contentsOf: batch.nameBytes)
 
-        let childStart = Int32(nodes.count)
-        nodes[Int(parent)].childStart = childStart
-        nodes[Int(parent)].childCount = Int32(batch.entries.count)
+        if parent == 0 && reservedRootChildren > 0 {
+            // Keep the reserved capacity blocks at the head of the run.
+            nodes[0].childCount += Int32(batch.entries.count)
+        } else {
+            nodes[Int(parent)].childStart = Int32(nodes.count)
+            nodes[Int(parent)].childCount = Int32(batch.entries.count)
+        }
         // Do NOT call nodes.reserveCapacity(nodes.count + n) here.  Swift
         // reserves *exactly* what is asked for, which replaces the array's
         // geometric growth with an exact-fit reallocation on almost every

@@ -67,12 +67,15 @@ public struct FileTree: Sendable {
         public var childStart: Int32
         public var childCount: Int32
         public var isDirectory: Bool
+        /// A block standing for capacity rather than for a file on disk -- free
+        /// space, or space the scan could not account for.  It has no path.
+        public var isSynthetic: Bool
 
         public init(size: Int64 = 0, logicalSize: Int64? = nil,
                     allocatedShared: Int64? = nil, linkCount: UInt16 = 1,
                     nameOffset: UInt32 = 0, nameLength: UInt32 = 0,
                     parent: Int32 = -1, childStart: Int32 = 0, childCount: Int32 = 0,
-                    isDirectory: Bool = false) {
+                    isDirectory: Bool = false, isSynthetic: Bool = false) {
             self.allocatedSize = size
             self.allocatedShared = allocatedShared ?? size
             self.logicalSize = logicalSize ?? size
@@ -83,6 +86,7 @@ public struct FileTree: Sendable {
             self.childStart = childStart
             self.childCount = childCount
             self.isDirectory = isDirectory
+            self.isSynthetic = isSynthetic
         }
     }
 
@@ -90,6 +94,8 @@ public struct FileTree: Sendable {
     public var names: [UInt8]
     public var rootPath: String
     public var stats: ScanStats
+    /// Capacity of the volume, when the scan covered a whole one.
+    public var volume: VolumeInfo?
     /// Which size the tree reports.  Changing it is free -- all variants were
     /// measured during the scan.
     public var metric: SizeMetric = .onDisk
@@ -193,6 +199,22 @@ public struct FileTree: Sendable {
     /// as well as where you are inside it.
     public func displayPath(of index: Int) -> String {
         ancestry(of: index).map { name(of: $0) }.joined(separator: "/")
+    }
+
+    /// The two capacity blocks, when the scan covered a whole volume.
+    ///
+    /// They are reserved in this order in the root's first two child slots by
+    /// `FileScanner.scan`, which is what makes an index test enough; a test
+    /// pins the order so a future change cannot quietly reverse them.
+    public enum Synthetic: Sendable, Equatable { case notScanned, freeSpace }
+
+    public func synthetic(_ index: Int) -> Synthetic? {
+        guard index < nodes.count, nodes[index].isSynthetic else { return nil }
+        switch index {
+        case 1: return .notScanned
+        case 2: return .freeSpace
+        default: return nil
+        }
     }
 
     /// Count everything beneath a node.

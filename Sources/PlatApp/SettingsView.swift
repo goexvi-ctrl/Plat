@@ -235,6 +235,8 @@ private struct ColorSettings: View {
         case .outline:    c = t.outline
         case .label:      c = t.label
         case .highlight:  c = t.highlight
+        case .freeSpace:  c = t.freeSpace
+        case .notScanned: c = t.notScanned
         }
         return ColorRGBA(c) ?? ColorRGBA(red: 0, green: 0, blue: 0)
     }

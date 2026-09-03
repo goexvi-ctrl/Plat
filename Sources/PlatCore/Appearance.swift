@@ -60,6 +60,7 @@ public struct ColorRGBA: Codable, Equatable, Sendable {
 /// The individually colourable parts of the map.
 public enum ThemeColor: String, CaseIterable, Codable, Sendable {
     case background, container, collapsed, aggregate, linkMark, outline, label, highlight
+    case freeSpace, notScanned
 
     public var displayName: String {
         switch self {
@@ -71,6 +72,8 @@ public enum ThemeColor: String, CaseIterable, Codable, Sendable {
         case .outline:    return "Box outline"
         case .label:      return "Label text"
         case .highlight:  return "Hover highlight"
+        case .freeSpace:  return "Free space"
+        case .notScanned: return "Not scanned"
         }
     }
 
@@ -85,6 +88,8 @@ public enum ThemeColor: String, CaseIterable, Codable, Sendable {
         case .outline:    return "The line around every box"
         case .label:      return "Names and sizes drawn on boxes"
         case .highlight:  return "Outline of the box under the pointer"
+        case .freeSpace:  return "Unused space on the volume"
+        case .notScanned: return "Space in use that the scan could not see"
         }
     }
 }
@@ -172,6 +177,8 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
             case .outline:    t.outline = c
             case .label:      t.label = c
             case .highlight:  t.highlight = c
+            case .freeSpace:  t.freeSpace = c
+            case .notScanned: t.notScanned = c
             }
         }
         for (key, colour) in kindColors { t.kinds[key] = colour.cgColor }
