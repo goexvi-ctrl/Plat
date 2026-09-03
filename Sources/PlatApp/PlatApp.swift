@@ -99,6 +99,8 @@ struct PlatApp: App {
                 Button("Show All Levels") { model.depthLimit = 0 }
                     .keyboardShortcut("]", modifiers: [.command, .shift])
                 Divider()
+                Toggle("Treat Bundles as Single Files", isOn: $model.collapsePackages)
+                    .keyboardShortcut("b", modifiers: [.command, .shift])
                 Toggle("Split Hard-Linked Space", isOn: $model.splitHardLinks)
                     .disabled(model.metric != .onDisk)
                 Divider()

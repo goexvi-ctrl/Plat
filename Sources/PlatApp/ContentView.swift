@@ -116,6 +116,7 @@ struct ContentView: View {
             .onChange(of: model.layout) { inspection = nil }
             .onChange(of: model.metric) { inspection = nil }
             .onChange(of: model.depthLimit) { inspection = nil }
+            .onChange(of: model.collapsePackages) { inspection = nil }
             .onChange(of: model.tree.revision) { inspection = nil }
         }
     }

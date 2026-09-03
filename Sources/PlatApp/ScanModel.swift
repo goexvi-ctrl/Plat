@@ -27,6 +27,12 @@ final class ScanModel {
 
     private(set) var phase: Phase = .empty
     private(set) var tree = FileTree.empty
+    /// True when the view is currently inside a bundle, which only happens
+    /// because the user asked to look inside one.
+    var isInsidePackage: Bool {
+        !tree.isEmpty && tree.ancestry(of: focus).contains { tree.isPackage($0) }
+    }
+
     /// The subtree currently filling the window.
     private(set) var focus = 0
     private(set) var scannedPath: String?
@@ -40,6 +46,12 @@ final class ScanModel {
     /// How many levels of nesting to draw; 0 means every level.
     var depthLimit = 0 {
         didSet { UserDefaults.standard.set(depthLimit, forKey: Self.depthKey) }
+    }
+    /// Draw applications and document libraries as single boxes.  On by
+    /// default: an application is one thing to install, one thing to delete,
+    /// and one thing to reason about, so it should be one box.
+    var collapsePackages = true {
+        didSet { UserDefaults.standard.set(collapsePackages, forKey: Self.packagesKey) }
     }
     /// Divide a hard-linked file's disk usage among its names.  On by default:
     /// deleting one of several names frees nothing, so charging the full size to
@@ -81,6 +93,7 @@ final class ScanModel {
     private static let depthKey = "DepthLimit"
     private static let splitKey = "SplitHardLinks"
     private static let confirmKey = "ConfirmBeforeDelete"
+    private static let packagesKey = "CollapsePackages"
     /// Beyond this, nesting is invisible anyway: each level costs a label strip
     /// plus padding, so a tall window runs out of room around 20.
     static let maxDepthLimit = 24
@@ -103,6 +116,9 @@ final class ScanModel {
         if UserDefaults.standard.object(forKey: Self.splitKey) != nil {
             splitHardLinks = UserDefaults.standard.bool(forKey: Self.splitKey)
         }
+        if UserDefaults.standard.object(forKey: Self.packagesKey) != nil {
+            collapsePackages = UserDefaults.standard.bool(forKey: Self.packagesKey)
+        }
         if UserDefaults.standard.object(forKey: Self.confirmKey) != nil {
             confirmBeforeDelete = UserDefaults.standard.bool(forKey: Self.confirmKey)
         }
@@ -118,6 +134,7 @@ final class ScanModel {
         o.labelHeight = showLabels ? 13 : 0
         o.padding = showLabels ? 3 : 1
         o.maxDepth = depthLimit == 0 ? 64 : min(depthLimit, Self.maxDepthLimit)
+        o.collapsePackages = collapsePackages
         return o
     }
 

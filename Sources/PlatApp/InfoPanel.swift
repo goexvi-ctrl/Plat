@@ -155,6 +155,13 @@ struct InfoPanel: View {
             }
             row("Bytes", tree.size(of: node).formatted(.number.grouping(.automatic)))
             row("Kind", kind)
+            if let package = tree.packageKind(of: node) {
+                row("Shown as", "one item \u{2014} macOS treats this "
+                    + "\(package.noun) as a single file",
+                    strong: true)
+                row("", "Zoom In to look inside; deleting anything in there "
+                    + "separately would break it")
+            }
             if entry.isDirectory {
                 let counts = tree.subtreeCounts(of: node)
                 row("Contains", "\(ByteFormat.count(Int(entry.childCount))) items here, "
@@ -197,6 +204,14 @@ struct InfoPanel: View {
     }
 
     private var kind: String {
+        if let package = tree.packageKind(of: node) {
+            let ext = (name as NSString).pathExtension
+            if let described = UTType(filenameExtension: ext, conformingTo: .directory)?
+                .localizedDescription {
+                return described
+            }
+            return package == .code ? "Application bundle" : "Document package"
+        }
         if entry.isDirectory { return "Folder" }
         let ext = (name as NSString).pathExtension
         guard !ext.isEmpty else { return "File" }

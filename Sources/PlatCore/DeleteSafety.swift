@@ -214,7 +214,7 @@ public enum DeleteSafety {
         // dangerous case.  Deleting the package itself is judged further down.
         for enclosing in components.dropLast() {
             let ext = (enclosing as NSString).pathExtension.lowercased()
-            if codePackages.contains(ext) {
+            if Packages.code.contains(ext) {
                 a.risk = .danger
                 a.summary = "Inside \(enclosing)"
                 a.notes = ["This file is part of an application bundle. Removing "
@@ -224,7 +224,7 @@ public enum DeleteSafety {
                            + "file. Delete the whole \(enclosing) instead."]
                 return
             }
-            if documentPackages.contains(ext) {
+            if Packages.document.contains(ext) {
                 a.risk = .danger
                 a.summary = "Inside \(enclosing)"
                 a.notes = ["\(enclosing) looks like a single document or library "
@@ -315,7 +315,7 @@ public enum DeleteSafety {
 
         // -- Costly but recoverable ------------------------------------------
         let ownExtension = (last as NSString).pathExtension.lowercased()
-        if codePackages.contains(ownExtension) {
+        if Packages.code.contains(ownExtension) {
             a.risk = .caution
             a.summary = ownExtension == "app" ? "Application" : "Application component"
             a.notes = ["Deleting the whole bundle is the correct way to remove "
@@ -324,7 +324,7 @@ public enum DeleteSafety {
                        + "installer to get it back."]
             return
         }
-        if documentPackages.contains(ownExtension) {
+        if Packages.document.contains(ownExtension) {
             a.risk = .caution
             a.summary = "Document library"
             a.notes = ["This is one document or library in its entirety."]
@@ -354,23 +354,6 @@ public enum DeleteSafety {
     }
 
     // MARK: Tables
-
-    /// Bundles whose contents are code.  Removing one file breaks the seal on
-    /// the whole thing.
-    static let codePackages: Set<String> = [
-        "app", "framework", "bundle", "kext", "plugin", "appex", "xpc",
-        "qlgenerator", "prefpane", "mdimporter", "component", "saver",
-        "service", "systemextension", "dext", "driver", "wdgt", "vst", "vst3",
-        "audiounit", "pluginkit",
-    ]
-
-    /// Bundles the Finder shows as a single document or library.
-    static let documentPackages: Set<String> = [
-        "photoslibrary", "musiclibrary", "tvlibrary", "aplibrary",
-        "imovielibrary", "theater", "fcpbundle", "logicx", "band", "pages",
-        "numbers", "key", "rtfd", "sparsebundle", "scptd", "abbu", "download",
-        "photoslibrary", "migrationreport",
-    ]
 
     static let systemRoots = [
         "/System", "/bin", "/sbin", "/usr/bin", "/usr/lib", "/usr/libexec",

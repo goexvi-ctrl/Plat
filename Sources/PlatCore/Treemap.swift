@@ -35,6 +35,13 @@ public struct TreemapOptions: Sendable {
     /// proportional to the number of boxes a person can actually see rather
     /// than to the number of files on the disk.
     public var minVisibleArea: CGFloat = 6
+    /// Draw an application, a Photos library or a Pages document as one box
+    /// rather than opening it up.  On by default, because that is what those
+    /// directories are: the Finder shows them as single objects, and Plat's own
+    /// delete rules refuse to treat their contents as ordinary files.  The
+    /// bundle a scan is focused on is always opened, so double-clicking one
+    /// still looks inside.
+    public var collapsePackages = true
     public var layout: TreemapLayout = .squarified
 
     public init(layout: TreemapLayout = .squarified) { self.layout = layout }
@@ -144,10 +151,17 @@ private final class Builder {
         // `hasChildren` means "this box was actually subdivided", so it has to
         // agree with the guard in layoutChildren below.  Otherwise a folder cut
         // off by the depth limit draws as a container with nothing inside it.
+        // A collapsed package is a leaf like any other: no label strip, no
+        // padding, and nothing inside it is laid out or hit-tested.  Zooming in
+        // makes it the layout root, and roots are never collapsed -- `build`
+        // starts from the root's children -- so this is also what makes "double
+        // click to look inside" work without a second setting.
+        let collapsed = options.collapsePackages && tree.isPackage(node)
         let hasRoom = rect.width >= options.minBoxSize * 2
             && rect.height >= options.minBoxSize * 2
             && tree.nodes[node].childCount > 0
             && depth + 1 < options.maxDepth
+            && !collapsed
         boxes.append(TreemapBox(node: Int32(node), depth: Int32(depth),
                                 rect: rect, hasChildren: hasRoom))
         guard hasRoom else { return }

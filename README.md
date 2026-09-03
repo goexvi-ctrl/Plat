@@ -91,6 +91,27 @@ and those buttons are disabled.
 The **Aa** toggle in the toolbar turns the labels off, which gives the boxes
 themselves more room.
 
+## Applications and other bundles
+
+An application is one thing to install, one thing to delete and one thing to
+reason about, so Plat draws it as one box.  `Thing.app` shows up with its whole
+weight and a flat colour, exactly like a file -- no label strip, nothing inside
+it to click.  The same goes for a Photos library, a Pages document, a sparse
+bundle and the rest of the directories macOS presents as single objects.
+
+This is not a cosmetic choice.  Deleting one file out of a bundle breaks it, so a
+map that invites you to poke around inside one is inviting a mistake; the map and
+the delete rules read the same table of bundle types, so they cannot disagree.
+
+**Double-click** a bundle to look inside it anyway.  Zooming in makes it the root
+of the map, and the root is always opened -- so exploring one costs a double
+click and nothing else.  To open them all up at once, turn off **Treat Bundles as
+Single Files** (**Shift-Cmd-B**) in the View menu.
+
+The difference is large on a real disk.  A scan of `/Applications` here draws
+2,402 boxes with bundles open and 498 with them shut, and the shut version is the
+one that answers "which application is eating the disk?".
+
 ## Colours and fonts
 
 **Plat > Settings** (Cmd-,) has two tabs.

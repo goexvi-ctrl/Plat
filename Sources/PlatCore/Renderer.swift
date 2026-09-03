@@ -147,10 +147,17 @@ public struct TreemapRenderer {
                 ? theme.freeSpace : theme.notScanned
         }
         if box.hasChildren { return theme.container }
-        // A folder we chose not to open: show it as a solid block.
-        if node.isDirectory { return node.childCount > 0 ? theme.collapsed : theme.container }
-        // A pinned extension wins; otherwise the file takes its kind's colour.
         let ext = extensionKey(of: node, in: names)
+        // A package drawn whole is standing in for a file, so it takes a file's
+        // colour -- an application gets the Application colour rather than the
+        // grey of a folder that was too small to open.
+        let isPackage = node.isDirectory
+            && ext.flatMap(Packages.kind(ofExtension:)) != nil
+        // A folder we chose not to open: show it as a solid block.
+        if node.isDirectory && !isPackage {
+            return node.childCount > 0 ? theme.collapsed : theme.container
+        }
+        // A pinned extension wins; otherwise the file takes its kind's colour.
         if let ext, let pinned = theme.extensionColors[ext] { return pinned }
         let kind = ext.map(FileKind.of(extension:)) ?? .other
         return theme.kinds[kind.rawValue] ?? kind.defaultColor.cgColor

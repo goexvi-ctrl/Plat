@@ -161,6 +161,40 @@ public struct FileTree: Sendable {
         }
     }
 
+    /// The lowercased extension of a node's name, read straight out of the
+    /// name blob.  Avoids building the whole name just to look at the few bytes
+    /// after the last dot.
+    public func fileExtension(of index: Int) -> String? {
+        let n = nodes[index]
+        let lo = Int(n.nameOffset)
+        let hi = lo + Int(n.nameLength)
+        var dot = -1
+        var i = hi - 1
+        // A leading dot makes a hidden file, not an extension, so stop above lo.
+        while i > lo {
+            if names[i] == UInt8(ascii: ".") { dot = i; break }
+            i -= 1
+        }
+        guard dot >= 0, dot + 1 < hi else { return nil }
+        var bytes = [UInt8]()
+        bytes.reserveCapacity(hi - dot - 1)
+        for j in (dot + 1) ..< hi {
+            let b = names[j]
+            bytes.append(b >= 65 && b <= 90 ? b + 32 : b)   // ASCII lowercase
+        }
+        return String(decoding: bytes, as: UTF8.self)
+    }
+
+    /// Whether this node is a directory macOS presents as a single object -- an
+    /// application, a Photos library, a Pages document.
+    public func packageKind(of index: Int) -> PackageKind? {
+        let n = nodes[index]
+        guard n.isDirectory, !n.isSynthetic else { return nil }
+        return fileExtension(of: index).flatMap(Packages.kind(ofExtension:))
+    }
+
+    public func isPackage(_ index: Int) -> Bool { packageKind(of: index) != nil }
+
     /// Full filesystem path of a node, rebuilt by walking to the root.
     /// O(depth); nothing stores paths, which is what keeps a multi-million-node
     /// scan inside a few hundred megabytes.

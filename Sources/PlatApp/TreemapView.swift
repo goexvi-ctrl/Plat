@@ -189,7 +189,8 @@ struct TreemapView: NSViewRepresentable {
         }
         if v.options.layout != options.layout
             || v.options.labelHeight != options.labelHeight
-            || v.options.maxDepth != options.maxDepth {
+            || v.options.maxDepth != options.maxDepth
+            || v.options.collapsePackages != options.collapsePackages {
             v.options = options
         }
         v.showLabels = showLabels
