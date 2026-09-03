@@ -20,8 +20,10 @@ final class TreemapNSView: NSView, NSDraggingSource, NSViewToolTipOwner {
     var onHover: ((TreemapBox?) -> Void)?
     /// Whether this item may be moved out of Plat, as opposed to only copied.
     var allowsMove: ((Int) -> Bool)?
-    /// A drag finished; the file may or may not still be where it was.
-    var onDragEnded: ((Int) -> Void)?
+    /// A drag finished.  The flag says whether the drop target *claimed* it
+    /// would take the file away, which is a hint about how long to keep
+    /// looking -- never an answer about what happened.
+    var onDragEnded: ((Int, Bool) -> Void)?
 
     private var map = Treemap.empty
     private var mapBounds: CGRect = .zero
@@ -250,10 +252,14 @@ extension TreemapNSView {
                          operation: NSDragOperation) {
         defer { dragging = false; dragNode = nil }
         guard let node = dragNode else { return }
-        // Ask the disk rather than trusting `operation`: a drop target is free
-        // to move a file without reporting .move, and the answer that matters
-        // is simply whether the file is still there.
-        onDragEnded?(node)
+        // `operation` is what the destination said it would do, negotiated by
+        // the system -- not a record of what it did.  An application that opens
+        // an image and touches nothing still has to answer something, and
+        // .copy or .generic are the conventional answers; .generic in
+        // particular means nothing at all about the filesystem.  So the truth
+        // comes from the disk, and this only says whether to expect a change.
+        let claimsRemoval = !operation.intersection([.move, .delete]).isEmpty
+        onDragEnded?(node, claimsRemoval)
     }
 }
 
@@ -269,7 +275,7 @@ struct TreemapView: NSViewRepresentable {
     var onHover: (TreemapBox?) -> Void
     var onDelete: (Int) -> Void
     var allowsMove: (Int) -> Bool
-    var onDragEnded: (Int) -> Void
+    var onDragEnded: (Int, Bool) -> Void
 
     func makeNSView(context: Context) -> TreemapNSView {
         let v = TreemapNSView()

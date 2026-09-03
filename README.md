@@ -292,8 +292,19 @@ file.  The drag carries a real file URL and the file's own icon.
   Finder shows a copy badge rather than a move one.  Deleting has a confirmation
   it can stop you at, and dragging does not.
 
-When a drag really does move a file, Plat looks at the disk rather than trusting
-what the drop target reported, then re-reads the volume's own figures.  A file
+Plat cannot tell in advance what a drop will do, and neither can any other
+application: `NSDraggingSource` is handed a screen point as the drag moves and
+nothing else, and `NSDraggingSession` has no property for the operation the
+system is currently negotiating.  Even afterwards, the operation reported back
+is what the destination *said* it would do, not what it did -- an image editor
+that opens a file and touches nothing still has to answer something, and
+`NSDragOperationGeneric` means nothing at all about the filesystem.
+
+So Plat looks at the disk instead, then re-reads the volume's own figures.  The
+reported operation is used for one thing only: deciding how long to keep
+looking.  A drop that claims to be taking the file away is watched for a few
+seconds, because dragging a large folder to another volume is a copy followed by
+a delete and it can still be running after the mouse comes up.  A file
 moved to another folder on the same volume frees nothing at all, and Plat is
 never told where it went -- so the map shows the folder shrinking while free
 space stays exactly where it was, and the difference lands in **Not scanned**,

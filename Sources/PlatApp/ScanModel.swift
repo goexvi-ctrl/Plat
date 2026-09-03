@@ -231,6 +231,7 @@ final class ScanModel {
             scanned.splitHardLinks = splitHardLinks
             tree = scanned
             focus = scanned.root
+            scanGeneration += 1
             phase = .ready
         case .failure(let error):
             if case ScanError.cancelled = error {
@@ -352,15 +353,49 @@ final class ScanModel {
         return assessment(for: node).risk < .danger
     }
 
+    /// How long to keep asking whether a dragged file really left.
+    ///
+    /// `draggingSession(_:endedAt:operation:)` fires when the *drag* ends, not
+    /// when the receiver has finished with the file.  Dropping a large folder
+    /// on another volume with Command held is a copy followed by a delete, and
+    /// it can run for seconds after the mouse comes up, so a single check at
+    /// drag-end would see the file still sitting there and conclude nothing
+    /// happened.
+    private static let dragSettleDelays: [Duration] =
+        [.milliseconds(400), .seconds(2), .seconds(6)]
+
     /// A drag has finished.  Whether it was a move is decided by looking at the
-    /// disk, not by the operation the drop target reported: a target may move a
-    /// file without saying so, and the only question that matters is whether
-    /// the file is still where the scan left it.
-    func noteDragEnded(node: Int) {
+    /// disk, never by the operation the drop target reported -- see
+    /// `TreemapNSView.draggingSession(_:endedAt:operation:)` for why that
+    /// number cannot be trusted.  `claimsRemoval` only decides how long to
+    /// keep watching.
+    func noteDragEnded(node: Int, claimsRemoval: Bool) {
         guard isReady, node > 0, node < tree.nodes.count, !tree.isGone(node) else { return }
         let path = tree.path(of: node)
-        guard !FileManager.default.fileExists(atPath: path) else { return }
+        if !FileManager.default.fileExists(atPath: path) {
+            applyDisappearance(of: node)
+            return
+        }
+        // Still there.  Wait and look again -- longer when the destination said
+        // it was taking the file, briefly otherwise in case it took it without
+        // saying so.
+        let delays = claimsRemoval ? Self.dragSettleDelays : [Self.dragSettleDelays[0]]
+        let generation = scanGeneration
+        Task { @MainActor in
+            for delay in delays {
+                try? await Task.sleep(for: delay)
+                // A rescan in the meantime makes this node index meaningless.
+                guard generation == scanGeneration, isReady,
+                      node < tree.nodes.count, !tree.isGone(node) else { return }
+                guard !FileManager.default.fileExists(atPath: path) else { continue }
+                applyDisappearance(of: node)
+                return
+            }
+        }
+    }
 
+    /// A file the scan knew about is no longer where it was.
+    private func applyDisappearance(of node: Int) {
         tree.remove(node)
         // A move to another folder on the same volume frees nothing, and Plat
         // is never told where the file went -- so ask the filesystem what
@@ -371,6 +406,10 @@ final class ScanModel {
         // it has nothing to put back.
         lastDelete = nil
     }
+
+    /// Bumped by every completed scan, so work scheduled against one tree does
+    /// not act on the indices of another.
+    private(set) var scanGeneration = 0
 
     var canUndoDelete: Bool { lastDelete?.trashURL != nil }
 

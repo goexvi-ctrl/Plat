@@ -95,7 +95,7 @@ struct ContentView: View {
                             onHover: { hover = $0 },
                             onDelete: { requestDelete($0) },
                             allowsMove: { model.allowsMove($0) },
-                            onDragEnded: { model.noteDragEnded(node: $0) })
+                            onDragEnded: { model.noteDragEnded(node: $0, claimsRemoval: $1) })
 
                 // A small invisible anchor sitting where the click landed, so
                 // the popover's arrow points at the box the user hit.  The
