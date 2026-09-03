@@ -257,7 +257,7 @@ Hidden files and folders *are* included, at every level: `.git`, `.build`,
 Needs a Swift 6 toolchain; built and tested with Xcode 26.
 
     make            # build build/Plat.app
-    make test       # 101 tests
+    make test       # 118 tests
     make install    # also install into ~/Applications
     make release    # build build/Plat-<version>-macos-<arch>.dmg
     make tag        # annotated tag v<version> for the current commit
@@ -298,7 +298,7 @@ entitlements, so there is no nested code to sign and nothing to grant.
     Sources/PlatCore/    scanner, tree, treemap, renderer -- no AppKit
     Sources/PlatApp/     SwiftUI window, NSView host, model
     Sources/PlatBench/   benchmark and offscreen PNG renderer
-    Tests/PlatCoreTests/ 101 tests
+    Tests/PlatCoreTests/ 118 tests
 
 `plat-bench` scans a tree and reports timings, and can render a treemap
 straight to a PNG without opening a window:
