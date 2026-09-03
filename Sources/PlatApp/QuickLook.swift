@@ -41,14 +41,24 @@ final class QuickLook: NSObject, @preconcurrency QLPreviewPanelDataSource,
     func previewPanel(_ panel: QLPreviewPanel!, handle event: NSEvent!) -> Bool {
         guard event.type == .keyDown else { return false }
         let deleteKeys: Set<UInt16> = [51, 117]   // delete, forward delete
-        guard deleteKeys.contains(event.keyCode), let action = deleteAction else {
+        guard deleteKeys.contains(event.keyCode), deleteAction != nil else {
             return false
         }
         // Close first: the confirmation is a sheet on the main window, and it
         // cannot come up underneath a panel that owns the key window.  The hop
-        // through the queue lets the panel finish going away.
+        // through the main actor lets the panel finish going away.
+        //
+        // The action is read back out of `self` inside the hop rather than
+        // captured here.  Handing the stored closure straight to the hop would
+        // mean converting a non-Sendable function value into a Sendable one,
+        // which the compiler rightly objects to; only `self` crosses, and a
+        // MainActor class is Sendable already.
         panel.orderOut(nil)
-        DispatchQueue.main.async(execute: action)
+        Task { @MainActor [weak self] in
+            guard let self, let action = deleteAction else { return }
+            deleteAction = nil
+            action()
+        }
         return true
     }
 

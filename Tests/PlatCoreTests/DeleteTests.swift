@@ -182,15 +182,13 @@ final class DeleteSafetyRuleTests: XCTestCase {
 
     private let home = "/Users/tester"
 
+    /// Path rules only.  `assess` runs the filesystem checks first and would
+    /// reject these invented paths before reaching them, so the rules are
+    /// driven directly and the running-application step repeated here.
     private func risk(_ path: String, dir: Bool = false, running: [String] = []) -> DeleteRisk {
         var a = DeleteAssessment()
-        DeleteSafety.assess(path: path, isDirectory: dir, home: home,
-                            runningApplicationPaths: running)
-        // Path rules only; assess() also does filesystem checks that would
-        // reject these invented paths outright.
         DeleteSafety.classifyForTests(path: path, isDirectory: dir, home: home, into: &a)
-        if let app = running.first(where: { DeleteSafety.isAtOrUnder(path: path, root: $0) }) {
-            _ = app
+        if running.contains(where: { DeleteSafety.isAtOrUnder(path: path, root: $0) }) {
             a.raise(to: .danger)
         }
         return a.risk
