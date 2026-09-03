@@ -8,6 +8,10 @@ struct Inspection: Identifiable, Equatable {
     let id = UUID()
     var node: Int
     var point: CGPoint
+    /// Worked out once, when the click happens.  Assessing costs an `lstat`
+    /// and a walk of every running application, which is not something to
+    /// repeat on each pass of the view body.
+    var risk: DeleteRisk = .normal
 
     static func == (a: Inspection, b: Inspection) -> Bool { a.id == b.id }
 }
@@ -21,7 +25,11 @@ struct InfoPanel: View {
     let node: Int
     /// Size of the figures; everything else here is relative to it.
     var baseFontSize: Double = AppearanceSettings.defaultUIFontSize
+    /// How risky deleting this would be.  Computed by the model, which knows
+    /// which applications are running.
+    var risk: DeleteRisk = .normal
     var onZoom: (Int) -> Void
+    var onDelete: (Int) -> Void
 
     private var nameSize: CGFloat { CGFloat(baseFontSize + 2) }
     private var iconSize: CGFloat { CGFloat(baseFontSize + 4) }
@@ -231,6 +239,28 @@ struct InfoPanel: View {
             // Only the filesystem actions depend on the file still being there;
             // zooming works on the scan already in memory.
             .disabled(!exists)
+
+            HStack(spacing: 10) {
+                Button(role: .destructive) {
+                    onDelete(node)
+                } label: {
+                    Label("Move to Trash", systemImage: "trash")
+                }
+                .disabled(!exists || risk == .blocked)
+                .help(risk == .blocked
+                      ? "The system will not allow this item to be deleted"
+                      : "Move this item to the Trash")
+
+                // The verdict, next to the button that acts on it.  A folder of
+                // caches and a folder inside an application look identical on
+                // the map; this is where the difference shows up.
+                if exists, risk != .normal {
+                    Label(risk.label, systemImage: riskSymbol)
+                        .font(.system(size: smallSize, weight: .medium))
+                        .foregroundStyle(riskColor)
+                }
+                Spacer()
+            }
             if entry.childCount > 0 {
                 Button {
                     onZoom(node)
@@ -249,7 +279,27 @@ struct InfoPanel: View {
         .font(.system(size: buttonSize))
     }
 
-    private var exists: Bool { QuickLook.canPreview(path) }
+    private var exists: Bool { !tree.isGone(node) && QuickLook.canPreview(path) }
+
+    private var riskSymbol: String {
+        switch risk {
+        case .safe:    return "checkmark.circle"
+        case .normal:  return "trash"
+        case .caution: return "exclamationmark.circle"
+        case .danger:  return "exclamationmark.triangle.fill"
+        case .blocked: return "nosign"
+        }
+    }
+
+    private var riskColor: Color {
+        switch risk {
+        case .safe:    return .green
+        case .normal:  return .secondary
+        case .caution: return .orange
+        case .danger:  return .red
+        case .blocked: return .secondary
+        }
+    }
 
 }
 

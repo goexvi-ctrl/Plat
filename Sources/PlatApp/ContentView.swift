@@ -25,6 +25,20 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .goToFolderRequested)) { _ in
             if model.isReady { goToFolder = true }
         }
+        .sheet(item: $model.pendingDelete) { request in
+            DeleteSheet(request: request,
+                        baseFontSize: prefs.appearance.uiFontSize,
+                        askEveryTime: $model.confirmBeforeDelete,
+                        onCancel: { model.cancelDelete() },
+                        onConfirm: { model.confirmDelete() })
+        }
+        .alert("Delete failed",
+               isPresented: Binding(get: { model.deleteError != nil },
+                                    set: { if !$0 { model.deleteError = nil } })) {
+            Button("OK") { model.deleteError = nil }
+        } message: {
+            Text(model.deleteError ?? "")
+        }
         .navigationTitle(model.windowTitle)
     }
 
@@ -74,10 +88,12 @@ struct ContentView: View {
                             appearance: prefs.appearance,
                             onOpen: { zoom(to: $0) },
                             onInspect: { node, point in
-                                inspection = Inspection(node: node, point: point)
+                                inspection = Inspection(node: node, point: point,
+                                                        risk: model.assessment(for: node).risk)
                             },
                             onGoUp: { model.goUp(); inspection = nil },
-                            onHover: { hover = $0 })
+                            onHover: { hover = $0 },
+                            onDelete: { requestDelete($0) })
 
                 // A small invisible anchor sitting where the click landed, so
                 // the popover's arrow points at the box the user hit.  The
@@ -91,14 +107,24 @@ struct ContentView: View {
                         InfoPanel(tree: model.tree,
                                   node: target.node,
                                   baseFontSize: prefs.appearance.uiFontSize,
-                                  onZoom: { zoom(to: $0) })
+                                  risk: target.risk,
+                                  onZoom: { zoom(to: $0) },
+                                  onDelete: { requestDelete($0) })
                     }
             }
             .onChange(of: model.focus) { inspection = nil }
             .onChange(of: model.layout) { inspection = nil }
             .onChange(of: model.metric) { inspection = nil }
             .onChange(of: model.depthLimit) { inspection = nil }
+            .onChange(of: model.tree.revision) { inspection = nil }
         }
+    }
+
+    /// Close the popover before the sheet opens: a sheet presented from behind
+    /// a popover leaves the popover floating over it.
+    private func requestDelete(_ node: Int) {
+        inspection = nil
+        model.requestDelete(node: node)
     }
 
     /// The depth field accepts a number or the word "All" (also blank, or 0).
@@ -210,8 +236,19 @@ struct ContentView: View {
                             .foregroundStyle(.red)
                     }
                 }
+            } else if let last = model.lastDelete {
+                // The most useful thing to say right after a delete is how to
+                // take it back.
+                Label("Moved \u{201C}\(last.name)\u{201D} to the Trash",
+                      systemImage: "trash")
+                    .foregroundStyle(.secondary)
+                if model.canUndoDelete {
+                    Button("Put It Back") { model.undoDelete() }
+                        .buttonStyle(.link)
+                }
             } else if case .ready = model.phase {
-                Text("Click for details \u{2022} double-click to zoom in \u{2022} right-click to go back")
+                Text("Click for details \u{2022} double-click to zoom in \u{2022} "
+                     + "right-click to go back \u{2022} Delete to trash")
                     .foregroundStyle(.tertiary)
             }
             Spacer()

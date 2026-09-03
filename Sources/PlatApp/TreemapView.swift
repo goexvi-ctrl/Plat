@@ -16,6 +16,7 @@ final class TreemapNSView: NSView {
     var onOpen: ((Int) -> Void)?
     var onInspect: ((Int, CGPoint) -> Void)?
     var onGoUp: (() -> Void)?
+    var onDelete: ((Int) -> Void)?
     var onHover: ((TreemapBox?) -> Void)?
 
     private var map = Treemap.empty
@@ -88,6 +89,14 @@ final class TreemapNSView: NSView {
 
     // MARK: Interaction
 
+    /// Take key focus when the map appears, so Delete works without a click
+    /// first.  Nothing else in the window wants the keyboard until a sheet or
+    /// popover opens, and those take it back for as long as they are up.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        window?.makeFirstResponder(self)
+    }
+
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         if let tracking { removeTrackingArea(tracking) }
@@ -135,6 +144,18 @@ final class TreemapNSView: NSView {
     }
 
     override func rightMouseDown(with event: NSEvent) { onGoUp?() }
+
+    /// Delete acts on the box under the pointer, which is the one the user is
+    /// looking at.  Nothing happens without a target, and the model still puts
+    /// a confirmation in the way.
+    override func keyDown(with event: NSEvent) {
+        let deleteKeys: Set<UInt16> = [51, 117]   // delete, forward delete
+        guard deleteKeys.contains(event.keyCode), let node = hovered?.node else {
+            super.keyDown(with: event)
+            return
+        }
+        onDelete?(Int(node))
+    }
 }
 
 struct TreemapView: NSViewRepresentable {
@@ -147,6 +168,7 @@ struct TreemapView: NSViewRepresentable {
     var onInspect: (Int, CGPoint) -> Void
     var onGoUp: () -> Void
     var onHover: (TreemapBox?) -> Void
+    var onDelete: (Int) -> Void
 
     func makeNSView(context: Context) -> TreemapNSView {
         let v = TreemapNSView()
@@ -161,6 +183,7 @@ struct TreemapView: NSViewRepresentable {
         if v.rootNode != root { v.rootNode = root }
         if v.tree.nodes.count != tree.nodes.count || v.tree.rootPath != tree.rootPath
             || v.tree.metric != tree.metric
+            || v.tree.revision != tree.revision
             || v.tree.splitHardLinks != tree.splitHardLinks {
             v.tree = tree
         }
@@ -175,5 +198,6 @@ struct TreemapView: NSViewRepresentable {
         v.onInspect = onInspect
         v.onGoUp = onGoUp
         v.onHover = onHover
+        v.onDelete = onDelete
     }
 }

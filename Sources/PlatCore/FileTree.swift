@@ -70,6 +70,12 @@ public struct FileTree: Sendable {
         /// A block standing for capacity rather than for a file on disk -- free
         /// space, or space the scan could not account for.  It has no path.
         public var isSynthetic: Bool
+        /// Deleted since the scan.  The node stays in the array -- children are
+        /// contiguous ranges, so compacting it out would invalidate every index
+        /// above it -- but its sizes are zero and traversals stop here.  Free
+        /// alongside the two flags already present: Node is 46 bytes of fields
+        /// padded to 48 either way.
+        public var isDeleted: Bool = false
 
         public init(size: Int64 = 0, logicalSize: Int64? = nil,
                     allocatedShared: Int64? = nil, linkCount: UInt16 = 1,
@@ -103,6 +109,10 @@ public struct FileTree: Sendable {
     /// `.onDisk`: an apparent size is a property of the file, not of how many
     /// names point at it.
     public var splitHardLinks = true
+    /// Bumped whenever a node is removed or restored.  A deletion changes sizes
+    /// without changing the node count, so the views need something to compare
+    /// that says "the layout you cached is stale".
+    public private(set) var revision = 0
 
     public init(nodes: [Node], names: [UInt8], rootPath: String, stats: ScanStats,
                 metric: SizeMetric = .onDisk, splitHardLinks: Bool = true) {
@@ -229,6 +239,9 @@ public struct FileTree: Sendable {
         stack.reserveCapacity(64)
         while let i = stack.popLast() {
             let node = nodes[i]
+            // A deleted subtree is unreachable, and a capacity block is not an
+            // item on disk; neither belongs in a count of what a folder holds.
+            if node.isDeleted || node.isSynthetic { continue }
             if i != index {
                 if node.isDirectory { folders += 1 } else { files += 1 }
             }
@@ -260,5 +273,117 @@ public struct FileTree: Sendable {
                 i -= 1
             }
         }
+    }
+
+    // MARK: Deletion
+
+    /// Everything needed to undo one removal.  Restoring is O(depth) rather
+    /// than O(subtree) because a removal zeroes only the node itself; its
+    /// children keep their sizes and are simply never reached.
+    public struct Removal: Sendable, Equatable {
+        public var node: Int
+        public var allocatedSize: Int64
+        public var allocatedShared: Int64
+        public var logicalSize: Int64
+        public var files: Int
+        public var folders: Int
+        /// Where it was, so the caller can put the file back.
+        public var path: String
+    }
+
+    /// Take a node out of the tree after its file has gone to the Trash.
+    ///
+    /// The three sizes come off every ancestor and go onto the free-space
+    /// block, so the root still totals the volume's capacity and the map
+    /// redraws with a visibly larger free area -- which is the whole point of
+    /// deleting something.
+    ///
+    /// The free block is credited with the same figure that was subtracted,
+    /// which keeps the root exactly invariant under every metric.  For a
+    /// hard-linked name that overstates the real gain: the blocks stay until
+    /// the last name goes, and the surviving names' shares should grow to
+    /// match.  Plat does not know where those other names are without another
+    /// scan, so it says so in the confirmation instead of guessing here.
+    @discardableResult
+    public mutating func remove(_ index: Int) -> Removal? {
+        guard index > 0, index < nodes.count else { return nil }
+        let n = nodes[index]
+        guard !n.isSynthetic, !n.isDeleted else { return nil }
+        let counts = subtreeCounts(of: index)
+        let removal = Removal(node: index,
+                              allocatedSize: n.allocatedSize,
+                              allocatedShared: n.allocatedShared,
+                              logicalSize: n.logicalSize,
+                              files: counts.files + (n.isDirectory ? 0 : 1),
+                              folders: counts.folders + (n.isDirectory ? 1 : 0),
+                              path: path(of: index))
+        nodes[index].isDeleted = true
+        apply(removal, sign: -1)
+        return removal
+    }
+
+    /// Put a removal back, after the file itself has been recovered.
+    public mutating func restore(_ removal: Removal) {
+        guard removal.node < nodes.count, nodes[removal.node].isDeleted else { return }
+        nodes[removal.node].isDeleted = false
+        apply(removal, sign: 1)
+    }
+
+    /// Move one removal's weight on or off the ancestors and the free block.
+    private mutating func apply(_ r: Removal, sign: Int64) {
+        let allocated = r.allocatedSize * sign
+        let shared = r.allocatedShared * sign
+        let logical = r.logicalSize * sign
+
+        // The node itself holds its size only while it is present.
+        nodes[r.node].allocatedSize = sign < 0 ? 0 : r.allocatedSize
+        nodes[r.node].allocatedShared = sign < 0 ? 0 : r.allocatedShared
+        nodes[r.node].logicalSize = sign < 0 ? 0 : r.logicalSize
+
+        var i = Int(nodes[r.node].parent)
+        while i >= 0 {
+            nodes[i].allocatedSize += allocated
+            nodes[i].allocatedShared += shared
+            nodes[i].logicalSize += logical
+            i = Int(nodes[i].parent)
+        }
+
+        // Give the space back to the free block, and to the root along with it,
+        // so the root stays equal to the volume's capacity.
+        if let free = freeSpaceIndex {
+            nodes[free].allocatedSize -= allocated
+            nodes[free].allocatedShared -= shared
+            nodes[free].logicalSize -= logical
+            nodes[root].allocatedSize -= allocated
+            nodes[root].allocatedShared -= shared
+            nodes[root].logicalSize -= logical
+        }
+
+        revision += 1
+        stats.files += r.files * Int(sign)
+        stats.directories += r.folders * Int(sign)
+        stats.allocatedBytes += allocated
+        stats.sharedBytes += shared
+        stats.totalBytes += logical
+    }
+
+    /// Index of the free-space block, when the scan covered a whole volume.
+    public var freeSpaceIndex: Int? {
+        synthetic(2) == .freeSpace ? 2 : nil
+    }
+
+    public func isDeleted(_ index: Int) -> Bool {
+        index >= 0 && index < nodes.count && nodes[index].isDeleted
+    }
+
+    /// True when this node or anything above it has been deleted, so it is no
+    /// longer reachable on disk.
+    public func isGone(_ index: Int) -> Bool {
+        var i = index
+        while i >= 0 {
+            if nodes[i].isDeleted { return true }
+            i = Int(nodes[i].parent)
+        }
+        return false
     }
 }

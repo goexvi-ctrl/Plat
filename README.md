@@ -196,6 +196,58 @@ charged the full amount.
 This applies to on-disk sizes only.  A file's apparent length does not depend
 on how many names point at it, so Logical size is never divided.
 
+## Deleting things
+
+Finding the space is only half of it.  Select a box and press **Delete**, or use
+**Move to Trash** in the details popover.
+
+Nothing is ever unlinked.  Items go to the Trash, and **Cmd-Z** puts the last one
+back -- on disk and on the map.  The map updates immediately: the folder's boxes
+disappear, every folder above it shrinks, and on a whole-volume scan the freed
+blocks show up in the free-space block, so the picture still adds up to the size
+of the disk without a rescan.
+
+### The warning you get first
+
+Before anything moves, Plat says how risky it thinks the delete is.  Because
+everything goes to the Trash, this is not a scale of how much would be *lost* --
+almost anything in the Trash can be dragged back.  What it grades is whether the
+delete will quietly fail, whether something you are running will break, and
+whether the deletion escapes this Mac.
+
+| Verdict | Meaning | Examples |
+| --- | --- | --- |
+| **Safe to delete** | Regenerated on demand | `~/Library/Caches`, `~/Library/Logs`, `DerivedData`, `node_modules`, `.build` |
+| **Goes to the Trash** | An ordinary file | anything in `~/Documents`, `~/Downloads` |
+| **Check before deleting** | Nothing breaks, but something has to be reinstalled or set up again | an application, `~/Library/Application Support`, `~/Library/Preferences` |
+| **Deleting this is risky** | Software will probably break, or the deletion reaches other devices | files inside an `.app`, `/opt/homebrew`, `LaunchDaemons`, iCloud Drive, `.git`, keychains |
+| **Cannot be deleted** | The system will refuse | anything protected by System Integrity Protection, locked files, folders you cannot write to |
+
+Some of the reasoning is worth knowing about:
+
+* **Inside a package.**  Deleting one file out of `Thing.app` invalidates its
+  code signature, and macOS will then usually refuse to launch it -- with an
+  error that never mentions the missing file.  The same goes for a
+  `.photoslibrary` or a `.pages` document, which look like single files in the
+  Finder but are really folders.  This test runs before every other rule,
+  because an Electron application ships its own `node_modules` and calling that
+  one safe would break the app.
+* **Running right now.**  If the item belongs to an application that is running,
+  the verdict is raised and says so by name.
+* **Hard links.**  Plat already knows how many names point at a file, so it can
+  tell you a delete will recover *nothing* before you make it.
+* **Permissions.**  Removing an item needs write permission on the folder that
+  contains it, not on the item -- which is the usual mistake, and the reason a
+  delete fails with no explanation.
+* **iCloud.**  Anything under `~/Library/Mobile Documents` is removed from every
+  device signed in to the same account, and this Mac's Trash will not bring it
+  back on the others.  Files whose contents have been evicted to iCloud free no
+  space here at all.
+
+Plat asks before every delete.  Turning that off in **Settings > General** skips
+the question for ordinary files only; anything risky still asks, and the
+checkbox that turns it off is not offered from inside a risky dialog.
+
 ## Jumping to a folder by name
 
 **Shift-Cmd-G** opens a search field.  Type a folder name and the map goes

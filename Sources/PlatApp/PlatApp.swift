@@ -61,6 +61,13 @@ struct PlatApp: App {
             CommandGroup(replacing: .appInfo) {
                 Button("About Plat") { showAboutPanel() }
             }
+            // Plat has nothing else to undo, so the standard Edit > Undo slot
+            // is exactly the right home for taking a delete back.
+            CommandGroup(replacing: .undoRedo) {
+                Button(model.undoDeleteTitle) { model.undoDelete() }
+                    .keyboardShortcut("z")
+                    .disabled(!model.canUndoDelete)
+            }
             CommandGroup(replacing: .newItem) {
                 Button("Open Folder\u{2026}") { model.chooseFolder() }
                     .keyboardShortcut("o")

@@ -59,6 +59,20 @@ final class ScanModel {
         }
     }
 
+    /// Ask before every delete.  On by default and deliberately so: the map
+    /// makes it easy to click a 40 GB folder by accident, and the confirmation
+    /// is the only place the safety assessment is ever shown.
+    var confirmBeforeDelete = true {
+        didSet { UserDefaults.standard.set(confirmBeforeDelete, forKey: Self.confirmKey) }
+    }
+
+    /// The delete awaiting confirmation, which drives the sheet.
+    var pendingDelete: DeleteRequest?
+    /// The last completed delete, offered for undo until another one replaces it.
+    private(set) var lastDelete: CompletedDelete?
+    /// A delete or undo that failed, shown as an alert.
+    var deleteError: String?
+
     private var cancelFlag: CancelFlag?
 
     private static let layoutKey = "TreemapLayout"
@@ -66,6 +80,7 @@ final class ScanModel {
     private static let metricKey = "SizeMetric"
     private static let depthKey = "DepthLimit"
     private static let splitKey = "SplitHardLinks"
+    private static let confirmKey = "ConfirmBeforeDelete"
     /// Beyond this, nesting is invisible anyway: each level costs a label strip
     /// plus padding, so a tall window runs out of room around 20.
     static let maxDepthLimit = 24
@@ -87,6 +102,9 @@ final class ScanModel {
         }
         if UserDefaults.standard.object(forKey: Self.splitKey) != nil {
             splitHardLinks = UserDefaults.standard.bool(forKey: Self.splitKey)
+        }
+        if UserDefaults.standard.object(forKey: Self.confirmKey) != nil {
+            confirmBeforeDelete = UserDefaults.standard.bool(forKey: Self.confirmKey)
         }
         // `Plat /some/path` scans that folder on launch.
         if let path = CommandLine.arguments.dropFirst().first(where: { !$0.hasPrefix("-") }),
@@ -204,5 +222,128 @@ final class ScanModel {
                 phase = .failed(error.localizedDescription)
             }
         }
+    }
+
+    // MARK: Deleting
+
+    /// One item the user has asked to delete, with the verdict on how risky it
+    /// is.  Built when the delete is requested, not when the sheet draws, so
+    /// the sheet renders a decision rather than making one.
+    struct DeleteRequest: Identifiable {
+        let id = UUID()
+        var node: Int
+        var name: String
+        var path: String
+        var isDirectory: Bool
+        var size: Int64
+        var files: Int
+        var folders: Int
+        var assessment: DeleteAssessment
+    }
+
+    struct CompletedDelete {
+        var removal: FileTree.Removal
+        var name: String
+        /// Where it landed in the Trash.  Nil if macOS did not say, in which
+        /// case Plat cannot offer to put it back itself.
+        var trashURL: URL?
+    }
+
+    var canDelete: Bool { isReady }
+
+    /// Assess a node without acting on it, for the info panel's badge.
+    func assessment(for node: Int) -> DeleteAssessment {
+        DeleteSafety.assess(tree: tree, node: node,
+                            runningApplicationPaths: Self.runningApplicationPaths())
+    }
+
+    /// Step one of a delete: work out what it would cost and either ask or,
+    /// when the user has turned confirmations off and the item is unremarkable,
+    /// go ahead.
+    func requestDelete(node: Int) {
+        guard isReady, node > 0, node < tree.nodes.count else { return }
+        let entry = tree.nodes[node]
+        guard !entry.isSynthetic, !tree.isGone(node) else { return }
+
+        let verdict = assessment(for: node)
+        let counts = tree.subtreeCounts(of: node)
+        let request = DeleteRequest(node: node,
+                                    name: tree.name(of: node),
+                                    path: tree.path(of: node),
+                                    isDirectory: entry.isDirectory,
+                                    size: tree.size(of: node),
+                                    files: counts.files,
+                                    folders: counts.folders,
+                                    assessment: verdict)
+
+        if verdict.risk == .blocked {
+            // Nothing to confirm -- the delete cannot happen.  Say why.
+            pendingDelete = request
+            return
+        }
+        if confirmBeforeDelete || verdict.risk.alwaysConfirm {
+            pendingDelete = request
+        } else {
+            perform(request)
+        }
+    }
+
+    func cancelDelete() { pendingDelete = nil }
+
+    /// Step two: the user said yes.
+    func confirmDelete() {
+        guard let request = pendingDelete else { return }
+        pendingDelete = nil
+        perform(request)
+    }
+
+    private func perform(_ request: DeleteRequest) {
+        do {
+            let trashed = try Trash.recycle(URL(fileURLWithPath: request.path))
+            // The tree changes only once the file has actually moved, so a
+            // refused delete never leaves the map lying about the disk.
+            guard let removal = tree.remove(request.node) else { return }
+            lastDelete = CompletedDelete(removal: removal,
+                                         name: request.name,
+                                         trashURL: trashed)
+            retreatFromDeleted()
+        } catch {
+            deleteError = "Could not move \(request.name) to the Trash.\n"
+                        + error.localizedDescription
+        }
+    }
+
+    var canUndoDelete: Bool { lastDelete?.trashURL != nil }
+
+    var undoDeleteTitle: String {
+        lastDelete.map { "Undo Delete of \($0.name)" } ?? "Undo Delete"
+    }
+
+    /// Put the last deleted item back, both on disk and in the tree.
+    func undoDelete() {
+        guard let last = lastDelete, let trashed = last.trashURL else { return }
+        do {
+            try Trash.putBack(from: trashed, to: URL(fileURLWithPath: last.removal.path))
+            tree.restore(last.removal)
+            lastDelete = nil
+        } catch {
+            deleteError = "Could not put \(last.name) back.\n"
+                        + error.localizedDescription
+        }
+    }
+
+    /// If the view was inside the folder that just went away, climb to the
+    /// nearest ancestor that is still there.
+    private func retreatFromDeleted() {
+        guard tree.isGone(focus) else { return }
+        var i = focus
+        while i > 0, tree.isGone(i) { i = Int(tree.nodes[i].parent) }
+        focus = max(i, tree.root)
+    }
+
+    /// Bundle paths of everything running right now.  Cheap, and it turns "this
+    /// is part of an app" into "this is part of an app you are using".
+    private static func runningApplicationPaths() -> [String] {
+        NSWorkspace.shared.runningApplications.compactMap { $0.bundleURL?.path }
     }
 }

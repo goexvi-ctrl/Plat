@@ -8,6 +8,8 @@ struct SettingsView: View {
 
     var body: some View {
         TabView {
+            GeneralSettings(model: model)
+                .tabItem { Label("General", systemImage: "gearshape") }
             ColorSettings(prefs: prefs, model: model)
                 .tabItem { Label("Colors", systemImage: "paintpalette") }
             FontSettings(prefs: prefs)
@@ -18,6 +20,29 @@ struct SettingsView: View {
 }
 
 // MARK: - Colors
+
+/// Behaviour that is not about colour or type.
+private struct GeneralSettings: View {
+    @Bindable var model: ScanModel
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle("Ask before moving items to the Trash", isOn: $model.confirmBeforeDelete)
+                Text("Items that would break installed or running software, or "
+                     + "that are stored in iCloud, always ask \u{2014} turning "
+                     + "this off only skips the question for ordinary files.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } header: {
+                Text("Deleting")
+            }
+        }
+        .formStyle(.grouped)
+        .frame(width: 460)
+    }
+}
 
 private struct ColorSettings: View {
     @Bindable var prefs: Preferences
