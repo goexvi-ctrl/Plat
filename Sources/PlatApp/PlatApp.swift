@@ -53,7 +53,7 @@ struct PlatApp: App {
 
         // A Settings scene gives the standard Plat > Settings item and Cmd-,.
         Settings {
-            SettingsView(prefs: prefs)
+            SettingsView(prefs: prefs, model: model)
         }
         .commands {
             // Replace the stock About item so the panel can show which commit

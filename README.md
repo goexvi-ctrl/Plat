@@ -93,8 +93,17 @@ themselves more room.
 *Colors* gives a well for each part of the map -- background, open folder,
 unopened folder, the grouped-small-files block, the hard-link flag, box
 outline, label text and hover highlight -- each labelled with what it actually
-colours, plus the ten-colour palette that file boxes are picked from by
-extension.
+colours.
+
+Below those, **file types**.  Pin a colour to any extension: a Swift programmer
+can have `.swift` orange and `.m` blue, whatever those happen to hash to.  Type
+an extension to add one, with or without the leading dot and in any case.
+
+Anything unpinned is coloured from a ten-colour palette, picked by hashing the
+extension -- which is why those colours mean nothing on their own.  To make
+that concrete the dialog lists the extensions using the most space **in the
+scan you have open**, each showing the colour it currently has; clicking one
+pins it at that colour, so nothing moves until you actually change it.
 
 A colour you have not set follows the system light or dark appearance, and
 resetting one puts it back under that control rather than freezing it at a

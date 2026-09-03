@@ -118,3 +118,108 @@ final class AppearanceTests: XCTestCase {
         XCTAssertEqual(back, s)
     }
 }
+
+final class ExtensionColorTests: XCTestCase {
+
+    func testNormalisationStripsDotsAndCase() {
+        XCTAssertEqual(AppearanceSettings.normalizeExtension(".M"), "m")
+        XCTAssertEqual(AppearanceSettings.normalizeExtension("Swift"), "swift")
+        XCTAssertEqual(AppearanceSettings.normalizeExtension("  .PNG  "), "png")
+        XCTAssertEqual(AppearanceSettings.normalizeExtension("..m"), "m")
+        XCTAssertEqual(AppearanceSettings.normalizeExtension("   "), "")
+    }
+
+    /// Typing ".M" must colour a file called foo.m.
+    func testLookupIgnoresDotAndCase() {
+        var s = AppearanceSettings()
+        s.setExtension(".M", to: ColorRGBA(hex: "FF0000FF")!)
+        XCTAssertEqual(s.extensionColor("m")?.hex, "FF0000FF")
+        XCTAssertEqual(s.extensionColor(".m")?.hex, "FF0000FF")
+        XCTAssertEqual(s.extensionColor("M")?.hex, "FF0000FF")
+    }
+
+    func testEmptyExtensionIsRejected() {
+        var s = AppearanceSettings()
+        s.setExtension("  ", to: ColorRGBA(hex: "FF0000FF")!)
+        s.setExtension(".", to: ColorRGBA(hex: "FF0000FF")!)
+        XCTAssertTrue(s.extensionColors.isEmpty)
+    }
+
+    func testPinnedColoursReachTheTheme() {
+        var s = AppearanceSettings()
+        s.setExtension("swift", to: ColorRGBA(hex: "112233FF")!)
+        let t = s.apply(to: .standard)
+        XCTAssertEqual(ColorRGBA(t.extensionColors["swift"]!)?.hex, "112233FF")
+        XCTAssertNil(t.extensionColors["m"])
+    }
+
+    func testRemovingAPin() {
+        var s = AppearanceSettings()
+        s.setExtension("m", to: ColorRGBA(hex: "00FF00FF")!)
+        s.setExtension("m", to: nil)
+        XCTAssertTrue(s.extensionColors.isEmpty)
+        XCTAssertTrue(s.isDefault)
+    }
+
+    /// The dialog previews the palette colour an unpinned extension will get.
+    /// If its hash disagreed with the renderer's, it would show the wrong one.
+    func testPaletteHashIsStableAndCaseInsensitive() {
+        for ext in ["swift", "m", "png", "tar.gz", "a"] {
+            let a = ExtensionPalette.bucket(for: ext, buckets: 10)
+            XCTAssertEqual(a, ExtensionPalette.bucket(for: "." + ext.uppercased(), buckets: 10),
+                           "case or a leading dot changed the bucket for \(ext)")
+            XCTAssertEqual(a, ExtensionPalette.bucket(lowercasedBytes: Array(ext.utf8), buckets: 10),
+                           "the String and bytes forms disagree for \(ext)")
+            XCTAssertTrue((0 ..< 10).contains(a))
+        }
+    }
+
+    func testPaletteHashHandlesDegenerateInput() {
+        XCTAssertEqual(ExtensionPalette.bucket(for: "", buckets: 10), 0)
+        XCTAssertEqual(ExtensionPalette.bucket(for: "swift", buckets: 0), 0)
+    }
+}
+
+final class ExtensionUsageTests: XCTestCase {
+
+    private var root: URL!
+
+    override func setUpWithError() throws {
+        root = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("plat-ext-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("sub"),
+                                                withIntermediateDirectories: true)
+        try Data(repeating: 1, count: 40_000).write(to: root.appendingPathComponent("a.swift"))
+        try Data(repeating: 1, count: 10_000).write(to: root.appendingPathComponent("b.swift"))
+        try Data(repeating: 1, count: 90_000).write(to: root.appendingPathComponent("sub/c.M"))
+        try Data(repeating: 1, count: 5_000).write(to: root.appendingPathComponent("noext"))
+    }
+
+    override func tearDownWithError() throws { try? FileManager.default.removeItem(at: root) }
+
+    func testTalliesBySizeAcrossTheWholeTree() throws {
+        var tree = try FileScanner.scan(path: root.path)
+        tree.metric = .logical
+        let usage = tree.extensionUsage()
+
+        XCTAssertEqual(usage.first?.ext, "m", "biggest extension should come first")
+        XCTAssertEqual(usage.first?.bytes, 90_000)
+        XCTAssertEqual(usage.first?.files, 1)
+
+        let swift = try XCTUnwrap(usage.first { $0.ext == "swift" })
+        XCTAssertEqual(swift.bytes, 50_000, "both .swift files should be counted together")
+        XCTAssertEqual(swift.files, 2)
+
+        XCTAssertFalse(usage.contains { $0.ext == "noext" })
+        XCTAssertNil(usage.first { $0.ext == "M" }, "extensions are folded to lower case")
+    }
+
+    func testLimitIsRespected() throws {
+        let tree = try FileScanner.scan(path: root.path)
+        XCTAssertLessThanOrEqual(tree.extensionUsage(limit: 1).count, 1)
+    }
+
+    func testEmptyTree() {
+        XCTAssertTrue(FileTree.empty.extensionUsage().isEmpty)
+    }
+}

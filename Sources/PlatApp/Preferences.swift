@@ -38,6 +38,7 @@ final class Preferences {
     func resetColors() {
         appearance.colors = [:]
         appearance.leaves = nil
+        appearance.extensionColors = [:]
     }
 
     func resetFonts() {

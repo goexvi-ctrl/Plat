@@ -142,3 +142,57 @@ extension FileTree {
         return false
     }
 }
+
+/// How much space each file extension accounts for.
+public struct ExtensionUsage: Sendable, Identifiable, Equatable {
+    public var ext: String
+    public var bytes: Int64
+    public var files: Int
+    public var id: String { ext }
+}
+
+extension FileTree {
+    /// The extensions using the most space in this scan, biggest first.
+    ///
+    /// Used to seed the colour settings: guessing which extensions matter is
+    /// the user's problem, and the scan already knows the answer.  One pass
+    /// over the nodes, so it is a few hundred milliseconds on a very large
+    /// scan and is only run when the dialog asks for it.
+    public func extensionUsage(limit: Int = 40) -> [ExtensionUsage] {
+        var totals: [String: (bytes: Int64, files: Int)] = [:]
+        totals.reserveCapacity(256)
+
+        names.withUnsafeBufferPointer { buf in
+            for i in 0 ..< nodes.count {
+                let node = nodes[i]
+                guard !node.isDirectory else { continue }
+                let size = size(of: i)
+                guard size > 0 else { continue }
+                let lo = Int(node.nameOffset)
+                let hi = lo + Int(node.nameLength)
+                var dot = -1
+                var j = hi - 1
+                while j > lo {
+                    if buf[j] == UInt8(ascii: ".") { dot = j; break }
+                    j -= 1
+                }
+                guard dot >= 0, dot + 1 < hi, hi - dot - 1 <= 16 else { continue }
+                var bytes = [UInt8]()
+                bytes.reserveCapacity(hi - dot - 1)
+                for k in (dot + 1) ..< hi {
+                    let b = buf[k]
+                    bytes.append(b >= 65 && b <= 90 ? b + 32 : b)
+                }
+                let key = String(decoding: bytes, as: UTF8.self)
+                totals[key, default: (0, 0)].bytes += size
+                totals[key, default: (0, 0)].files += 1
+            }
+        }
+
+        return totals
+            .map { ExtensionUsage(ext: $0.key, bytes: $0.value.bytes, files: $0.value.files) }
+            .sorted { $0.bytes > $1.bytes }
+            .prefix(limit)
+            .map { $0 }
+    }
+}

@@ -21,6 +21,10 @@ public struct RenderTheme: Sendable {
     public var highlight: CGColor
     /// Leaf colours, picked by file extension so files of one kind read as a group.
     public var leaves: [CGColor]
+    /// Colours pinned to specific extensions, keyed lowercased without the dot.
+    /// Consulted before the palette; empty by default, and when it is empty the
+    /// renderer skips the lookup entirely.
+    public var extensionColors: [String: CGColor] = [:]
 
     public init(background: CGColor, container: CGColor, collapsed: CGColor,
                 aggregate: CGColor, linkMark: CGColor, outline: CGColor,
@@ -142,10 +146,20 @@ public struct TreemapRenderer {
         if box.hasChildren { return theme.container }
         // A folder we chose not to open: show it as a solid block.
         if node.isDirectory { return node.childCount > 0 ? theme.collapsed : theme.container }
+        // A pinned extension wins over the palette.  Building the key costs a
+        // small String per box, so it is skipped entirely when nothing is
+        // pinned -- which is the default.
+        if !theme.extensionColors.isEmpty,
+           let key = extensionKey(of: node, in: names),
+           let pinned = theme.extensionColors[key] {
+            return pinned
+        }
         return theme.leaves[extensionBucket(of: node, in: names, buckets: theme.leaves.count)]
     }
 
-    /// Hash the file extension in place, without building a String per file.
+    /// Which palette slot this node's extension falls into.  Folds case in
+    /// place rather than building a String, then defers to ExtensionPalette so
+    /// the settings dialog cannot disagree about the answer.
     private func extensionBucket(of node: FileTree.Node,
                                  in names: UnsafeBufferPointer<UInt8>,
                                  buckets: Int) -> Int {
@@ -158,13 +172,31 @@ public struct TreemapRenderer {
             i -= 1
         }
         guard dot >= 0, dot + 1 < hi else { return 0 }
-        var h: UInt32 = 2166136261
+        let folded = ((dot + 1) ..< hi).lazy.map { j -> UInt8 in
+            let b = names[j]
+            return b >= 65 && b <= 90 ? b + 32 : b
+        }
+        return ExtensionPalette.bucket(lowercasedBytes: folded, buckets: buckets)
+    }
+
+    private func extensionKey(of node: FileTree.Node,
+                              in names: UnsafeBufferPointer<UInt8>) -> String? {
+        let lo = Int(node.nameOffset)
+        let hi = lo + Int(node.nameLength)
+        var dot = -1
+        var i = hi - 1
+        while i > lo {
+            if names[i] == UInt8(ascii: ".") { dot = i; break }
+            i -= 1
+        }
+        guard dot >= 0, dot + 1 < hi else { return nil }
+        var bytes = [UInt8]()
+        bytes.reserveCapacity(hi - dot - 1)
         for j in (dot + 1) ..< hi {
             let b = names[j]
-            let c = (b >= 65 && b <= 90) ? b + 32 : b   // fold case
-            h = (h ^ UInt32(c)) &* 16777619
+            bytes.append(b >= 65 && b <= 90 ? b + 32 : b)
         }
-        return Int(h % UInt32(buckets))
+        return String(decoding: bytes, as: UTF8.self)
     }
 
     private func drawLinkMarks(_ map: Treemap, of tree: FileTree,

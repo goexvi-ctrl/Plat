@@ -4,15 +4,16 @@ import SwiftUI
 
 struct SettingsView: View {
     @Bindable var prefs: Preferences
+    var model: ScanModel
 
     var body: some View {
         TabView {
-            ColorSettings(prefs: prefs)
+            ColorSettings(prefs: prefs, model: model)
                 .tabItem { Label("Colors", systemImage: "paintpalette") }
             FontSettings(prefs: prefs)
                 .tabItem { Label("Fonts", systemImage: "textformat") }
         }
-        .frame(width: 520, height: 430)
+        .frame(width: 560, height: 470)
     }
 }
 
@@ -20,6 +21,10 @@ struct SettingsView: View {
 
 private struct ColorSettings: View {
     @Bindable var prefs: Preferences
+    var model: ScanModel
+
+    @State private var usage: [ExtensionUsage] = []
+    @State private var newExtension = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -36,26 +41,119 @@ private struct ColorSettings: View {
                     }
 
                     Divider().padding(.vertical, 4)
-
-                    Text("File boxes")
-                        .font(.headline)
-                    Text("Each file is coloured by its extension, so files of one kind "
-                         + "read as a group.  These are the ten colours it picks from.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    leafGrid
+                    fileTypes
                 }
                 .padding(16)
             }
             Divider()
             HStack {
                 Button("Reset Colors") { prefs.resetColors() }
-                    .disabled(prefs.appearance.colors.isEmpty && prefs.appearance.leaves == nil)
+                    .disabled(prefs.appearance.colors.isEmpty
+                              && prefs.appearance.leaves == nil
+                              && prefs.appearance.extensionColors.isEmpty)
                 Spacer()
             }
             .padding(12)
         }
+        .task { usage = model.isReady ? model.tree.extensionUsage(limit: 24) : [] }
+    }
+
+    // MARK: File types
+
+    @ViewBuilder
+    private var fileTypes: some View {
+        Text("File types")
+            .font(.headline)
+        Text("Pin a colour to an extension.  Anything not pinned is coloured from "
+             + "the palette below, picked by hashing its name -- which is why those "
+             + "colours have no particular meaning on their own.")
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+
+        ForEach(prefs.appearance.extensionColors.keys.sorted(), id: \.self) { ext in
+            HStack(spacing: 12) {
+                ColorPicker("", selection: Binding(
+                    get: { prefs.appearance.extensionColor(ext)?.swiftUI ?? .gray },
+                    set: { prefs.appearance.setExtension(ext, to: ColorRGBA($0)) }),
+                    supportsOpacity: false)
+                    .labelsHidden()
+                    .frame(width: 44)
+                Text(".\(ext)").font(.system(.body, design: .monospaced))
+                Spacer()
+                Button("Remove") { prefs.appearance.setExtension(ext, to: nil) }
+                    .buttonStyle(.link)
+            }
+        }
+
+        HStack(spacing: 8) {
+            TextField("extension", text: $newExtension)
+                .frame(width: 110)
+                .onSubmit(addExtension)
+            Button("Add", action: addExtension)
+                .disabled(AppearanceSettings.normalizeExtension(newExtension).isEmpty)
+            Spacer()
+        }
+
+        if !suggestions.isEmpty {
+            Text("In this scan")
+                .font(.subheadline)
+                .padding(.top, 2)
+            Text("The extensions using the most space here.  Click one to pin it at "
+                 + "the colour it already has.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 132), spacing: 6)],
+                      alignment: .leading, spacing: 6) {
+              ForEach(suggestions) { item in
+                Button { pin(item.ext) } label: {
+                    HStack(spacing: 5) {
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(currentColor(for: item.ext))
+                            .frame(width: 11, height: 11)
+                        Text(".\(item.ext)").font(.system(size: 11, design: .monospaced))
+                        Text(ByteFormat.string(item.bytes))
+                            .font(.system(size: 10)).foregroundStyle(.secondary)
+                    }
+                    .padding(.horizontal, 6).padding(.vertical, 3)
+                    .background(RoundedRectangle(cornerRadius: 5)
+                        .fill(Color.secondary.opacity(0.12)))
+                }
+                .buttonStyle(.plain)
+                .help("Pin a colour to .\(item.ext)")
+              }
+            }
+        }
+
+        Divider().padding(.vertical, 4)
+        Text("Palette for everything else")
+            .font(.subheadline)
+        leafGrid
+    }
+
+    private var suggestions: [ExtensionUsage] {
+        usage.filter { prefs.appearance.extensionColor($0.ext) == nil }
+    }
+
+    private func addExtension() {
+        let key = AppearanceSettings.normalizeExtension(newExtension)
+        guard !key.isEmpty else { return }
+        pin(key)
+        newExtension = ""
+    }
+
+    /// Pin at the colour the extension already shows, so pinning changes
+    /// nothing until the colour is actually edited.
+    private func pin(_ ext: String) {
+        prefs.appearance.setExtension(ext, to: ColorRGBA(NSColor(currentColor(for: ext)).cgColor)
+            ?? ColorRGBA(red: 0.5, green: 0.5, blue: 0.5))
+    }
+
+    private func currentColor(for ext: String) -> Color {
+        if let pinned = prefs.appearance.extensionColor(ext) { return pinned.swiftUI }
+        let palette = prefs.leafPalette
+        return palette[ExtensionPalette.bucket(for: ext, buckets: palette.count)].swiftUI
     }
 
     private func row(_ slot: ThemeColor) -> some View {

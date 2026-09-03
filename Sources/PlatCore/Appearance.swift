@@ -57,6 +57,31 @@ public struct ColorRGBA: Codable, Equatable, Sendable {
     }
 }
 
+/// Which palette slot an unpinned extension falls into.
+///
+/// The renderer and the settings dialog must agree exactly: if they drift, the
+/// dialog shows a colour the map does not use.  So the hash lives here, once,
+/// and both call it.
+public enum ExtensionPalette {
+    /// FNV-1a over already-lowercased bytes.
+    public static func bucket(lowercasedBytes bytes: some Sequence<UInt8>, buckets: Int) -> Int {
+        guard buckets > 0 else { return 0 }
+        var h: UInt32 = 2166136261
+        var empty = true
+        for b in bytes {
+            empty = false
+            h = (h ^ UInt32(b)) &* 16777619
+        }
+        guard !empty else { return 0 }
+        return Int(h % UInt32(buckets))
+    }
+
+    public static func bucket(for ext: String, buckets: Int) -> Int {
+        bucket(lowercasedBytes: Array(AppearanceSettings.normalizeExtension(ext).utf8),
+               buckets: buckets)
+    }
+}
+
 /// The individually colourable parts of the map.
 public enum ThemeColor: String, CaseIterable, Codable, Sendable {
     case background, container, collapsed, aggregate, linkMark, outline, label, highlight
@@ -97,7 +122,11 @@ public enum ThemeColor: String, CaseIterable, Codable, Sendable {
 /// and "reset" is a deletion rather than a second set of hardcoded defaults.
 public struct AppearanceSettings: Codable, Equatable, Sendable {
     public var colors: [String: ColorRGBA]
-    /// Replacement palette for file boxes; nil keeps the built-in ten.
+    /// Colours pinned to particular file extensions, keyed lowercased and
+    /// without the dot ("swift", "m").  Anything not listed falls back to the
+    /// palette below, chosen by hashing the extension.
+    public var extensionColors: [String: ColorRGBA]
+    /// Fallback palette for file boxes; nil keeps the built-in ten.
     public var leaves: [ColorRGBA]?
     public var mapFontName: String
     public var mapFontSize: Double
@@ -108,11 +137,14 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
     public static let defaultMapFontSize = 10.0
     public static let defaultUIFontSize = 14.0
 
-    public init(colors: [String: ColorRGBA] = [:], leaves: [ColorRGBA]? = nil,
+    public init(colors: [String: ColorRGBA] = [:],
+                extensionColors: [String: ColorRGBA] = [:],
+                leaves: [ColorRGBA]? = nil,
                 mapFontName: String = AppearanceSettings.defaultMapFontName,
                 mapFontSize: Double = AppearanceSettings.defaultMapFontSize,
                 uiFontSize: Double = AppearanceSettings.defaultUIFontSize) {
         self.colors = colors
+        self.extensionColors = extensionColors
         self.leaves = leaves
         self.mapFontName = mapFontName
         self.mapFontSize = mapFontSize
@@ -122,6 +154,24 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
     public var isDefault: Bool { self == AppearanceSettings() }
 
     public func color(_ slot: ThemeColor) -> ColorRGBA? { colors[slot.rawValue] }
+
+    /// Normalised the way the renderer looks them up: lowercased, no leading
+    /// dot, so a user typing ".M" and a file called `foo.m` agree.
+    public static func normalizeExtension(_ raw: String) -> String {
+        var e = raw.trimmingCharacters(in: .whitespaces).lowercased()
+        while e.hasPrefix(".") { e.removeFirst() }
+        return e
+    }
+
+    public mutating func setExtension(_ raw: String, to colour: ColorRGBA?) {
+        let key = Self.normalizeExtension(raw)
+        guard !key.isEmpty else { return }
+        if let colour { extensionColors[key] = colour } else { extensionColors.removeValue(forKey: key) }
+    }
+
+    public func extensionColor(_ raw: String) -> ColorRGBA? {
+        extensionColors[Self.normalizeExtension(raw)]
+    }
 
     public mutating func set(_ slot: ThemeColor, to colour: ColorRGBA?) {
         if let colour { colors[slot.rawValue] = colour } else { colors.removeValue(forKey: slot.rawValue) }
@@ -149,6 +199,7 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
             }
         }
         if let leaves, !leaves.isEmpty { t.leaves = leaves.map(\.cgColor) }
+        t.extensionColors = extensionColors.reduce(into: [:]) { $0[$1.key] = $1.value.cgColor }
         return t
     }
 
